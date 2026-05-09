@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>TDSPro.App</RootNamespace>
+    <AssemblyName>TDSPro</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+    <Product>TDS Pro</Product>
+    <Company>TDS Pro</Company>
+    <Description>TDS Compliance Software — Income-tax Act 2025</Description>
+    <Copyright>Copyright 2026 TDS Pro</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="8.0.*" />
+    <PackageReference Include="MudBlazor" Version="7.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TDSPro.BLL\TDSPro.BLL.csproj" />
+    <ProjectReference Include="..\TDSPro.DAL\TDSPro.DAL.csproj" />
+    <ProjectReference Include="..\TDSPro.Common\TDSPro.Common.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,2341 @@
+﻿@page "/payroll"
+@page "/payroll/salary"
+@using System.IO
+@using System.IO.Compression
+@inject AppStateService AppState
+@inject PayrollService PayrollSvc
+@inject SalaryService SalarySvc
+@inject DeductorService DeductorSvc
+@inject TdsEntryService TdsEntrySvc
+@inject ISnackbar Snackbar
+@inject IDialogService DialogSvc
+
+<MudText Typo="Typo.h5" Class="mb-4">Payroll Management</MudText>
+
+<MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4"
+         ActivePanelIndexChanged="OnTabChanged">
+
+    @* ── TAB 1: EMPLOYEES ── *@
+    <MudTabPanel Text="Employees" Icon="@Icons.Material.Filled.People">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.subtitle1">Employee Master</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="OpenAddEmployee">
+                Add Employee
+            </MudButton>
+        </div>
+
+        <MudDataGrid T="Employee" Items="_employees" Filterable="true"
+                     Dense="true" Hover="true" Striped="true" Bordered="true">
+            <Columns>
+                <PropertyColumn Property="x => x.EmployeeCode" Title="Code" />
+                <PropertyColumn Property="x => x.Name" Title="Name" />
+                <PropertyColumn Property="x => x.Designation" Title="Designation" />
+                <PropertyColumn Property="x => x.Department" Title="Department" />
+                <PropertyColumn Property="x => x.Pan" Title="PAN" />
+                <PropertyColumn Property="x => x.JoinDate" Title="DOJ" />
+                <TemplateColumn Title="Status">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                            @(context.Item.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       OnClick="@(() => OpenEditEmployee(context.Item))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       Color="Color.Error"
+                                       OnClick="@(() => DeleteEmployee(context.Item))" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+
+        @if (_showEmployeeForm)
+        {
+            <div class="emp-form mt-4">
+
+                <!-- Header -->
+                <div class="form-hdr">
+                    <div class="av">👤</div>
+                    <div>
+                        <div class="htitle">@(_editingEmployee?.Id > 0 ? "Edit Employee" : "New Employee")</div>
+                        <div class="hsub">Complete all required fields · PAN &amp; Aadhaar encrypted at rest</div>
+                    </div>
+                    <div class="hbtns">
+                        <button class="hbtn" @onclick="CancelEmployeeForm">✕  Cancel</button>
+                        <button class="hbtn save" @onclick="SaveEmployee">💾  Save Employee</button>
+                    </div>
+                </div>
+
+                <!-- ═══ SECTION 1: Identity & Personal ═══ -->
+                <div class="sec-card">
+                    <div class="sec-strip">
+                        <div class="sec-num">1</div>
+                        <div><span class="sec-name">Identity &amp; Personal</span><span class="sec-desc"> · Basic identification and demographic details</span></div>
+                    </div>
+                    <div class="sec-body">
+
+                        <div class="grp">
+                            <div class="fg">
+                                <!-- Row 1: Code | Full Name | Father's Name | DOB | Gender -->
+                                <div class="fr" style="grid-template-columns:max-content 110px max-content 210px max-content 160px max-content 140px max-content 88px">
+                                    <div class="fl" style="white-space:nowrap">Emp. Code <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.EmployeeCode" style="width:100%" /></div>
+                                    <div class="fl" style="white-space:nowrap">Full Name <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.Name" style="width:100%" /></div>
+                                    <div class="fl" style="white-space:nowrap">Father's Name</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.FathersName" style="width:100%" /></div>
+                                    <div class="fl" style="white-space:nowrap">Date of Birth</div>
+                                    <div class="fi">
+                                        <input type="text" class="mono" value="@_editingEmployee.DateOfBirth" placeholder="dd-MMM-yyyy" style="width:100%"
+                                               @onchange="@((e) => { _editingEmployee.DateOfBirth = NormDate(e.Value?.ToString()); _empDob = DateTime.TryParse(_editingEmployee.DateOfBirth, out var d) ? d : null; })" />
+                                    </div>
+                                    <div class="fl" style="white-space:nowrap">Gender <span class="req">*</span></div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.Sex" style="width:100%">
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- Row 2: Marital Status | Blood Group | PAN | Aadhaar | Residential Status -->
+                                <div class="fr" style="grid-template-columns:auto auto auto auto auto auto auto auto auto auto">
+                                    <div class="fl">Marital Status</div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.MaritalStatus" style="width:105px">
+                                            <option value="Single">Single</option>
+                                            <option value="Married">Married</option>
+                                            <option value="Divorced">Divorced</option>
+                                        </select>
+                                    </div>
+                                    <div class="fl">Blood Group</div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.BloodGroup" style="width:75px">
+                                            <option value="">—</option>
+                                            <option value="A+">A+</option>
+                                            <option value="A-">A−</option>
+                                            <option value="B+">B+</option>
+                                            <option value="B-">B−</option>
+                                            <option value="O+">O+</option>
+                                            <option value="O-">O−</option>
+                                            <option value="AB+">AB+</option>
+                                            <option value="AB-">AB−</option>
+                                        </select>
+                                    </div>
+                                    <div class="fl">PAN <span class="req">*</span></div>
+                                    <div class="fi">
+                                        <input type="text" class="mono" maxlength="10" placeholder="AAAAA9999A" style="width:115px"
+                                               value="@_editingEmployee!.Pan"
+                                               @onchange="@((e) => { _editingEmployee.Pan = (e.Value?.ToString() ?? "").ToUpper(); })" />
+                                    </div>
+                                    <div class="fl">Aadhaar</div>
+                                    <div class="fi">
+                                        <input type="text" placeholder="XXXX XXXX XXXX" @bind="_editingEmployee.AadhaarNumber" style="font-family:monospace;letter-spacing:2px;width:150px" />
+                                        <span class="hint">Last 4 digits stored (masked)</span>
+                                    </div>
+                                    <div class="fl">Residential Status <span class="req">*</span></div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.ResidentialStatus" style="width:150px">
+                                            <option value="Resident">Resident Indian</option>
+                                            <option value="NRI">NRI</option>
+                                            <option value="Foreign">Foreign National</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grp">
+                            <div class="tgl-row">
+                                <label class="tgl-item">
+                                    <input type="checkbox" @bind="_editingEmployee!.IsActive" /> Active Employee
+                                </label>
+                                <label class="tgl-item">
+                                    <input type="checkbox" @bind="_editingEmployee.IsDifferentlyAbled" /> Differently Abled <span class="hint" style="margin-left:4px">(higher std. deduction)</span>
+                                </label>
+                                <label class="tgl-item" style="color:@((_empDob.HasValue && (DateTime.Today - _empDob.Value).TotalDays / 365.25 >= 60) ? "#16a34a" : "#94a3b8")">
+                                    <input type="checkbox" disabled checked="@(_empDob.HasValue && (DateTime.Today - _empDob.Value).TotalDays / 365.25 >= 60)" /> Senior Citizen <span class="hint" style="margin-left:4px">(auto-set from DOB)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ═══ SECTION 2: Employment ═══ -->
+                <div class="sec-card">
+                    <div class="sec-strip">
+                        <div class="sec-num">2</div>
+                        <div><span class="sec-name">Employment Details</span><span class="sec-desc"> · Role, dates, tax regime and payroll classification</span></div>
+                    </div>
+                    <div class="sec-body">
+
+                        <div class="grp">
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto 1fr auto 1fr auto 1fr auto 1fr">
+                                    <div class="fl">Designation <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.Designation" /></div>
+                                    <div class="fl">Department <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.Department" /></div>
+                                    <div class="fl">Employment Type</div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.EmploymentType">
+                                            <option value="Permanent">Permanent</option>
+                                            <option value="Contract">Contract</option>
+                                            <option value="Probation">Probation</option>
+                                            <option value="Intern">Intern</option>
+                                        </select>
+                                    </div>
+                                    <div class="fl">Reporting Manager</div>
+                                    <div class="fi">
+                                        <select>
+                                            <option value="">— None —</option>
+                                            @foreach (var e in _employees.Where(e => e.Id != _editingEmployee?.Id))
+                                            { <option value="@e.Id">@e.Name (@e.EmployeeCode)</option> }
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grp">
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto 1fr auto 1fr auto 1fr auto 1fr">
+                                    <div class="fl">Date of Joining <span class="req">*</span></div>
+                                    <div class="fi date-field">
+                                        <input type="text" class="mono" value="@_editingEmployee!.JoinDate" placeholder="dd-MMM-yyyy"
+                                               @onchange="@((e) => { _editingEmployee.JoinDate = NormDate(e.Value?.ToString()); _empJoin = DateTime.TryParse(_editingEmployee.JoinDate, out var d) ? d : null; })" />
+                                    </div>
+                                    <div class="fl">Date of Leaving</div>
+                                    <div class="fi date-field">
+                                        <input type="text" class="mono" value="@_editingEmployee.LeavingDate" placeholder="dd-MMM-yyyy"
+                                               @onchange="@((e) => { _editingEmployee.LeavingDate = NormDate(e.Value?.ToString()); _empLeave = DateTime.TryParse(_editingEmployee.LeavingDate, out var d) ? d : null; })" />
+                                        <span class="hint">Blank = currently active</span>
+                                    </div>
+                                    <div class="fl">Tax Regime <span class="req">*</span></div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.TaxRegime">
+                                            <option value="New">New Regime</option>
+                                            <option value="Old">Old Regime</option>
+                                        </select>
+                                    </div>
+                                    <div class="fl">Ward / Circle / Range</div>
+                                    <div class="fi">
+                                        <input type="text" @bind="_editingEmployee.WardCircleRange" placeholder="e.g. Ward 4(1), Mumbai" />
+                                        <span class="hint">Required on Form 16 Part B</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grp">
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto 2fr auto 2fr auto 2fr">
+                                    <div class="fl">Employer Name</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.PrevEmployerName" placeholder="Previous company name" /></div>
+                                    <div class="fl" style="font-size:11px">Prev. Employer Income (₹)<small>Added to gross for TDS</small></div>
+                                    <div class="fi"><input type="number" class="num" @bind="_editingEmployee.PrevEmployerIncome" placeholder="0" /></div>
+                                    <div class="fl" style="font-size:11px">Prev. Employer TDS (₹)<small>Offset from balance tax</small></div>
+                                    <div class="fi"><input type="number" class="num" @bind="_editingEmployee.PrevEmployerTds" placeholder="0" /></div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ═══ SECTION 3: Contact & Address ═══ -->
+                <div class="sec-card">
+                    <div class="sec-strip">
+                        <div class="sec-num">3</div>
+                        <div><span class="sec-name">Contact &amp; Address</span><span class="sec-desc"> · Communication details and residential address</span></div>
+                    </div>
+                    <div class="sec-body">
+
+                        <div class="grp">
+                            <div class="grp-hdr"><span class="gt">Contact</span><div class="gl"></div></div>
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto auto auto auto auto auto auto auto auto auto">
+                                    <div class="fl">Mobile <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.Phone" placeholder="9876543210" style="font-family:monospace;width:110px" /></div>
+                                    <div class="fl">Personal Email</div>
+                                    <div class="fi"><input type="text" value="@_editingEmployee!.Email" placeholder="personal@email.com" style="width:135px;text-transform:lowercase"
+                                                           @onchange="@(e => _editingEmployee.Email = (e.Value?.ToString() ?? "").Trim().ToLower())" /></div>
+                                    <div class="fl">Work Email</div>
+                                    <div class="fi"><input type="text" value="@_editingEmployee.WorkEmail" placeholder="work@company.com" style="width:135px;text-transform:lowercase"
+                                                           @onchange="@(e => _editingEmployee.WorkEmail = (e.Value?.ToString() ?? "").Trim().ToLower())" /></div>
+                                    <div class="fl">Emg. Contact</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.EmergencyContact" placeholder="Name — Relation" style="width:130px" /></div>
+                                    <div class="fl">Emg. Mobile</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.EmergencyMobile" placeholder="9876543210" style="font-family:monospace;width:110px" /></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grp">
+                            <div class="grp-hdr"><span class="gt">Residential Address</span><div class="gl"></div></div>
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto auto auto auto auto auto auto auto">
+                                    <div class="fl">Flat / Block / Street</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.FlatDoorBlockNo" placeholder="e.g. 12B, Sunrise Apts, MG Road" style="width:340px" /></div>
+                                    <div class="fl">City <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.TownCityDistrict" placeholder="e.g. Mumbai" style="width:130px" /></div>
+                                    <div class="fl">State <span class="req">*</span></div>
+                                    <div class="fi">
+                                        <select @bind="_editingEmployee.State" style="width:140px">
+                                            @foreach (var s in _indianStates) { <option value="@s">@s</option> }
+                                        </select>
+                                    </div>
+                                    <div class="fl">PIN <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.PinCode" maxlength="6" placeholder="400001" style="font-family:monospace;text-align:center;width:75px" /></div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ═══ SECTION 4: Statutory ═══ -->
+                <div class="sec-card">
+                    <div class="sec-strip">
+                        <div class="sec-num">4</div>
+                        <div><span class="sec-name">Statutory Identifiers</span><span class="sec-desc"> · EPFO, ESI, gratuity and bank account</span></div>
+                    </div>
+                    <div class="sec-body">
+
+                        <div class="grp">
+                            <div class="grp-hdr"><span class="gt">EPFO &amp; ESI</span><div class="gl"></div></div>
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto 1fr auto 1fr auto 1fr auto 1fr">
+                                    <div class="fl">UAN<small>12-digit EPFO</small></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.Uan" placeholder="100000000000" style="font-family:monospace;letter-spacing:1px" /></div>
+                                    <div class="fl">PF Account No.</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.PfNumber" placeholder="MH/BAN/12345/000/0000001" style="font-family:monospace;font-size:11.5px" /></div>
+                                    <div class="fl" style="font-size:11px">ESI IP No.<small>≤ ₹21K/mo</small></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.EsiIpNumber" placeholder="IP Number" style="font-family:monospace" /></div>
+                                    <div class="fl">Gratuity From<small>= DOJ or post-probation</small></div>
+                                    <div class="fi date-field">
+                                        <input type="text" class="mono" value="@_empGratuityFrom" placeholder="dd-MMM-yyyy"
+                                               @onchange="@((e) => _empGratuityFrom = NormDate(e.Value?.ToString()))" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grp">
+                            <div class="grp-hdr"><span class="gt">Bank Details</span><div class="gl"></div></div>
+                            <div class="fg">
+                                <div class="fr" style="grid-template-columns:auto auto auto auto auto auto auto auto auto auto">
+                                    <div class="fl">Bank Name</div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee!.BankName" placeholder="e.g. State Bank of India" style="width:180px" /></div>
+                                    <div class="fl">Account Number <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.BankAccount" placeholder="Account number" style="font-family:monospace;letter-spacing:1px;width:160px" /></div>
+                                    <div class="fl">IFSC Code <span class="req">*</span></div>
+                                    <div class="fi"><input type="text" class="mono" @bind="_editingEmployee!.BankIfsc" placeholder="SBIN0001234" maxlength="11" style="width:120px" /></div>
+                                    <div class="fl">Branch<small>Auto-fill on IFSC</small></div>
+                                    <div class="fi"><input type="text" @bind="_editingEmployee.BankBranch" placeholder="Enter IFSC to auto-fill" style="width:180px" readonly /></div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ═══ SECTION 5: Salary Structure ═══ -->
+                <div class="sec-card">
+                    <div class="sec-strip">
+                        <div class="sec-num">5</div>
+                        <div><span class="sec-name">Salary Structure &amp; Settings</span><span class="sec-desc"> · Monthly earnings, deductions and tax configuration</span></div>
+                    </div>
+                    <div class="sec-body">
+                        <div class="sal-cols">
+
+                            <!-- LEFT: Earnings -->
+                            <div>
+                                <div class="grp">
+                                    <div class="grp-hdr"><span class="gt" style="color:#15803d">Fixed Monthly Earnings (₹)</span><div class="gl grn"></div></div>
+                                    <div class="fg">
+                                        <div class="fr" style="grid-template-columns:auto 1fr auto 1fr">
+                                            <div class="fl">Basic Salary <span class="req">*</span></div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee!.Salary!.Basic" /></div>
+                                            <div class="fl">HRA<small>40% Basic · non-metro</small></div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee.Salary.Hra" /></div>
+                                        </div>
+                                        <div class="fr" style="grid-template-columns:auto 1fr auto 1fr">
+                                            <div class="fl">Dearness Allowance</div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee.Salary.Da" /></div>
+                                            <div class="fl">Special Allowance</div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee.Salary.SpecialAllowance" /></div>
+                                        </div>
+                                        <div class="fr" style="grid-template-columns:auto 1fr auto 1fr">
+                                            <div class="fl">Medical Allowance</div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee.Salary.MedicalAllowance" /></div>
+                                            <div class="fl">LTA<small>Exempt u/s 10(5)</small></div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee.Salary.Lta" /></div>
+                                        </div>
+                                        <div class="fr" style="grid-template-columns:auto auto">
+                                            <div class="fl">Structure Effective From</div>
+                                            <div class="fi date-field">
+                                                <input type="text" class="mono" style="width:120px" value="@_editingEmployee.Salary.EffectiveFrom" placeholder="dd-MMM-yyyy"
+                                                       @onchange="@((e) => _editingEmployee.Salary.EffectiveFrom = NormDate(e.Value?.ToString()))" />
+                                                <span class="hint">For salary revision history</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Other Named Allowances -->
+                                <div class="grp" style="margin-top:16px">
+                                    <div class="grp-hdr">
+                                        <span class="gt" style="color:#15803d">Other Named Allowances</span>
+                                        <div class="gl grn"></div>
+                                        <button class="add-row-btn" @onclick="@(() => _otherAllowances.Add(("", 0)))" style="margin:0 0 0 8px;padding:3px 10px;font-size:11px;flex-shrink:0">+ Add</button>
+                                    </div>
+                                    <table class="mtbl">
+                                        <thead><tr><th style="width:55%">Allowance Name</th><th style="width:37%;text-align:right">Amount (₹)</th><th></th></tr></thead>
+                                        <tbody>
+                                            @for (int _ai = 0; _ai < _otherAllowances.Count; _ai++)
+                                            {
+                                                var _idx = _ai;
+                                                <tr>
+                                                    <td><input type="text" value="@_otherAllowances[_idx].Name"
+                                                               @onchange="@((e) => { var a = _otherAllowances[_idx]; _otherAllowances[_idx] = (e.Value?.ToString() ?? "", a.Amount); })" /></td>
+                                                    <td><input type="number" style="text-align:right" value="@_otherAllowances[_idx].Amount"
+                                                               @onchange="@((e) => { var a = _otherAllowances[_idx]; _otherAllowances[_idx] = (a.Name, double.TryParse(e.Value?.ToString(), out var v) ? v : 0); })" /></td>
+                                                    <td><button class="rm-btn" @onclick="@(() => _otherAllowances.RemoveAt(_idx))">✕</button></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                @if (_salaryStructureNeedsReview)
+                                {
+                                    <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:12px;color:#856404">
+                                        ⚠ <strong>Action required:</strong> The "Other Allowances" amount below includes previously combined allowances.
+                                        Enter the correct values for Special Allowance, Medical Allowance and LTA above,
+                                        then update "Other Allowances" to only the remaining amount, and click Save.
+                                    </div>
+                                }
+                                <div class="gross-pill">
+                                    <span class="gl">Monthly Gross Salary</span>
+                                    @{
+                                        var _otherTotal = _otherAllowances.Sum(a => a.Amount);
+                                        var _grossVal = _editingEmployee?.Salary == null ? 0 :
+                                            _editingEmployee.Salary.Basic + _editingEmployee.Salary.Hra + _editingEmployee.Salary.Da +
+                                            _editingEmployee.Salary.SpecialAllowance + _editingEmployee.Salary.MedicalAllowance +
+                                            _editingEmployee.Salary.Lta + _otherTotal;
+                                    }
+                                    <span class="gv">₹@_grossVal.ToString("N0")</span>
+                                </div>
+                            </div>
+
+                            <!-- RIGHT: Settings -->
+                            <div>
+                                <div class="grp">
+                                    <div class="grp-hdr"><span class="gt" style="color:#b91c1c">Deduction Settings</span><div class="gl red"></div></div>
+                                    <div class="fg">
+                                        <div class="fr" style="grid-template-columns:auto auto">
+                                            <div class="fl">PF Fixed Amount (₹)<small>0 = auto 12% of Basic</small></div>
+                                            <div class="fi"><input type="number" class="num" @bind="_editingEmployee!.Salary!.PfFixedAmount" style="width:110px" /></div>
+                                        </div>
+                                        <div class="fr" style="grid-template-columns:auto auto">
+                                            <div class="fl">Professional Tax State</div>
+                                            <div class="fi">
+                                                <select @bind="_editingEmployee.Salary.PtState" style="width:180px">
+                                                    <option value="">Not Applicable</option>
+                                                    <option value="Maharashtra">Maharashtra</option>
+                                                    <option value="Karnataka">Karnataka</option>
+                                                    <option value="West Bengal">West Bengal</option>
+                                                    <option value="Tamil Nadu">Tamil Nadu</option>
+                                                    <option value="Telangana">Telangana</option>
+                                                    <option value="Gujarat">Gujarat</option>
+                                                    <option value="Andhra Pradesh">Andhra Pradesh</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="tgl-row" style="flex-direction:column;align-items:flex-start;gap:10px;padding-top:10px">
+                                        <label class="tgl-item"><input type="checkbox" @bind="_editingEmployee.Salary.PfApplicable" /> PF Applicable <span class="hint" style="margin-left:4px">(12% of Basic deducted)</span></label>
+                                        <label class="tgl-item"><input type="checkbox" @bind="_editingEmployee.Salary.EsiApplicable" /> ESI Applicable <span class="hint" style="margin-left:4px">(gross must be ≤ ₹21,000/mo)</span></label>
+                                        <label class="tgl-item"><input type="checkbox" @bind="_editingEmployee.HraMonthlyBasis" /> HRA computed on monthly basis</label>
+                                        <label class="tgl-item"><input type="checkbox" @bind="_editingEmployee.DaForRetirement" /> DA forms part of retirement salary</label>
+                                    </div>
+                                </div>
+
+                                <div class="grp">
+                                    <div class="grp-hdr"><span class="gt">PF / Gratuity Nomination</span><div class="gl"></div></div>
+                                    <div class="fg">
+                                        <div class="fr" style="grid-template-columns:auto 1fr auto 1fr">
+                                            <div class="fl">Nominee Name</div>
+                                            <div class="fi"><input type="text" @bind="_empNomineeName" placeholder="Full name" /></div>
+                                            <div class="fl">Relationship</div>
+                                            <div class="fi">
+                                                <select @bind="_empNomineeRelation">
+                                                    <option value="">— Select —</option>
+                                                    <option value="Spouse">Spouse</option>
+                                                    <option value="Father">Father</option>
+                                                    <option value="Mother">Mother</option>
+                                                    <option value="Son">Son</option>
+                                                    <option value="Daughter">Daughter</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grp">
+                                    <div class="grp-hdr"><span class="gt">Annual Tax Preview</span><div class="gl"></div></div>
+                                    @{
+                                        var _previewAnnualCTC = _grossVal * 12;
+                                        var _previewTaxable = Math.Max(0, _previewAnnualCTC - 75000);
+                                        var _previewTax = _previewTaxable <= 400000 ? 0 :
+                                                          _previewTaxable <= 800000  ? Math.Round((_previewTaxable - 400000) * 0.05) :
+                                                          _previewTaxable <= 1200000 ? Math.Round(20000 + (_previewTaxable - 800000) * 0.10) :
+                                                          _previewTaxable <= 1600000 ? Math.Round(60000 + (_previewTaxable - 1200000) * 0.15) :
+                                                          _previewTaxable <= 2000000 ? Math.Round(120000 + (_previewTaxable - 1600000) * 0.20) :
+                                                          _previewTaxable <= 2400000 ? Math.Round(200000 + (_previewTaxable - 2000000) * 0.25) :
+                                                                                       Math.Round(300000 + (_previewTaxable - 2400000) * 0.30);
+                                        _previewTax = _previewTaxable <= 1200000 ? 0 : _previewTax;
+                                        _previewTax = Math.Round(_previewTax * 1.04);
+                                    }
+                                    <div class="stat-row">
+                                        <div class="stat-box"><div class="sl">Annual CTC</div><div class="sv">₹@_previewAnnualCTC.ToString("N0")</div></div>
+                                        <div class="stat-box"><div class="sl">New Regime Tax</div><div class="sv" style="color:#1d4ed8">₹@_previewTax.ToString("N0")</div></div>
+                                        <div class="stat-box"><div class="sl">Monthly TDS Est.</div><div class="sv" style="color:#b45309">₹@((_previewTax / 12).ToString("N0"))</div></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                @if (!string.IsNullOrEmpty(_empError))
+                {
+                    <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 28px;font-size:13px;color:#b91c1c">@_empError</div>
+                }
+                <div class="form-footer">
+                    <button class="hbtn save" style="background:#166534;color:#fff;border:none" @onclick="SaveEmployee">💾  Save Employee</button>
+                    <button class="hbtn" style="background:#fff;color:#4a5568;border:1.5px solid #c8d2e0" @onclick="CancelEmployeeForm">Cancel</button>
+                    <span class="note">Fields marked <span style="color:#dc2626">*</span> are required &nbsp;·&nbsp; PAN &amp; Aadhaar encrypted at rest</span>
+                </div>
+
+            </div><!-- /emp-form -->
+        }
+    </MudTabPanel>
+
+    @* ── TAB 2: SALARY DATA ── *@
+    <MudTabPanel Text="Salary Data" Icon="@Icons.Material.Filled.EditNote">
+
+        @{
+            var _sdFixedTotal = _sdBasic + _sdHra + _sdDaAmt + _sdSpecial + _sdMedical + _sdLta + _sdOther + _sdNpsEmployer + _sdPerqTotal;
+            var _sdVarTotal   = _sdBonus + _sdCommission + _sdAdvance + _sdArrears + _sdLeaveEnc;
+            var _sdGrossTotal = _sdFixedTotal + _sdVarTotal;
+            var _sdVpfAmt     = _sdVpf;
+            var _sdFixedDedTotal = _sdPf + _sdVpf + _sdEsi + _sdPt + _sdTds;
+            var _sdVarDedTotal   = _sdVarDedRows.Sum(r => r.Amount);
+            var _sdTotalDed = _sdFixedDedTotal + _sdVarDedTotal;
+            var _sdNetPay   = _sdGrossTotal - _sdTotalDed;
+        }
+
+        <!-- Employee + Month selector -->
+        <div class="sd-paper" style="padding:12px 16px;margin-bottom:14px">
+            <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+                <div class="sd-field" style="min-width:220px">
+                    <label>Employee</label>
+                    <select @onchange="@((e) => OnSdEmployeeChanged(int.TryParse(e.Value?.ToString(), out var v) ? v : 0))">
+                        <option value="0">— Select Employee —</option>
+                        @foreach (var emp in _employees)
+                        {
+                            <option value="@emp.Id" selected="@(_sdEmpId == emp.Id)">@emp.Name (@emp.EmployeeCode)</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <div style="font-size:11px;color:#888;margin-bottom:5px">Month</div>
+                    <div class="sd-months">
+                        @for (int i = 0; i < _fyMonths.Length; i++)
+                        {
+                            var mi = i; var m = _fyMonths[i]; var mn = _monthNames[i];
+                            <button class="sd-month-btn @(_sdMonth == m ? "active" : "") @(_sdMonthHasData[mi] ? "has-data" : "")"
+                                    @onclick="() => SelectSdMonth(m)">@mn[..3]</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (_sdEmpId > 0)
+        {
+            <!-- KPI row -->
+            <div class="sd-kpi-row">
+                <div class="sd-kpi sd-kpi-blue"><div class="sd-kpi-label">Gross Earnings</div><div class="sd-kpi-value">₹@_sdGrossTotal.ToString("N0")</div></div>
+                <div class="sd-kpi sd-kpi-red"><div class="sd-kpi-label">Total Deductions</div><div class="sd-kpi-value">₹@_sdTotalDed.ToString("N0")</div></div>
+                <div class="sd-kpi sd-kpi-green"><div class="sd-kpi-label">Net Pay</div><div class="sd-kpi-value">₹@_sdNetPay.ToString("N0")</div></div>
+                <div class="sd-kpi sd-kpi-orange"><div class="sd-kpi-label">TDS This Month</div><div class="sd-kpi-value">₹@_sdTds.ToString("N0")</div></div>
+                <div class="sd-kpi sd-kpi-teal"><div class="sd-kpi-label">YTD TDS</div><div class="sd-kpi-value">₹@(_sdAnnual?.YtdTdsDeducted.ToString("N0") ?? "—")</div></div>
+            </div>
+
+            <!-- Two-column grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+                <!-- LEFT: Earnings -->
+                <div>
+                    <!-- Fixed Earnings -->
+                    <div class="sd-paper">
+                        <div class="sd-sec-head">📥 Fixed Earnings (from salary structure)</div>
+                        <table class="sd-dyn-table">
+                            <thead><tr><th style="width:55%">Component</th><th style="text-align:right">Amount (₹)</th></tr></thead>
+                            <tbody>
+                                <tr><td>Basic Salary</td><td><input type="number" style="text-align:right" @bind="_sdBasic" @bind:event="oninput" /></td></tr>
+                                <tr><td>HRA</td><td><input type="number" style="text-align:right" @bind="_sdHra" @bind:event="oninput" /></td></tr>
+                                <tr><td>DA</td><td><input type="number" style="text-align:right" @bind="_sdDaAmt" @bind:event="oninput" /></td></tr>
+                                <tr><td>Special Allowance</td><td><input type="number" style="text-align:right" @bind="_sdSpecial" @bind:event="oninput" /></td></tr>
+                                <tr><td>Medical Allowance</td><td><input type="number" style="text-align:right" @bind="_sdMedical" @bind:event="oninput" /></td></tr>
+                                <tr><td>Leave Travel Allowance (LTA)</td><td><input type="number" style="text-align:right" @bind="_sdLta" @bind:event="oninput" /></td></tr>
+                                <tr><td>Other Allowances</td><td><input type="number" style="text-align:right" @bind="_sdOther" @bind:event="oninput" /></td></tr>
+                                <tr><td>NPS Employer</td><td><input type="number" style="text-align:right" @bind="_sdNpsEmployer" @bind:event="oninput" /></td></tr>
+                                <tr><td>Perquisites (Gross)</td><td><input type="number" style="text-align:right" @bind="_sdPerqTotal" @bind:event="oninput" /></td></tr>
+                                <tr><td>Perquisites (Exempt)</td><td><input type="number" style="text-align:right" @bind="_sdPerqExempted" @bind:event="oninput" /></td></tr>
+                            </tbody>
+                            <tfoot>
+                                <tr><td class="sd-color-blue">Fixed Total</td><td style="text-align:right" class="sd-color-blue">₹@_sdFixedTotal.ToString("N0")</td></tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Variable / Additional Earnings -->
+                    <div class="sd-paper sd-accent-blue">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <div class="sd-sec-head" style="margin-bottom:0">➕ Variable / Additional Earnings</div>
+                            <button class="sd-btn-add" @onclick="AddVarEarnRow">+ Add Row</button>
+                        </div>
+                        <div class="sd-info-box">Add one-time or variable payments for this month only — bonus, overtime, arrears, incentive, etc.</div>
+                        <table class="sd-dyn-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:40%">Name / Description</th>
+                                    <th style="width:22%">Type</th>
+                                    <th style="text-align:right;width:28%">Amount (₹)</th>
+                                    <th style="width:10%"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Built-in variable rows mapped to existing state vars -->
+                                <tr>
+                                    <td>Bonus</td>
+                                    <td><select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"><option>Fully Taxable</option></select></td>
+                                    <td><input type="number" style="text-align:right" @bind="_sdBonus" @bind:event="oninput" /></td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td>Commission</td>
+                                    <td><select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"><option>Fully Taxable</option></select></td>
+                                    <td><input type="number" style="text-align:right" @bind="_sdCommission" @bind:event="oninput" /></td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td>Advance Salary</td>
+                                    <td><select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"><option>Fully Taxable</option></select></td>
+                                    <td><input type="number" style="text-align:right" @bind="_sdAdvance" @bind:event="oninput" /></td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td>Arrears</td>
+                                    <td><select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"><option>Fully Taxable</option></select></td>
+                                    <td><input type="number" style="text-align:right" @bind="_sdArrears" @bind:event="oninput" /></td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td>Leave Enc. (Total)</td>
+                                    <td><select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"><option>Fully Taxable</option></select></td>
+                                    <td><input type="number" style="text-align:right" @bind="_sdLeaveEnc" @bind:event="oninput" /></td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td>Leave Enc. (Exempt)</td>
+                                    <td><select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"><option>Exempt u/s 10(10AA)</option></select></td>
+                                    <td><input type="number" style="text-align:right" @bind="_sdLeaveEncEx" @bind:event="oninput" /></td>
+                                    <td></td>
+                                </tr>
+                                <!-- Dynamic add rows -->
+                                @for (int _vi = 0; _vi < _sdVarEarnRows.Count; _vi++)
+                                {
+                                    var _idx = _vi;
+                                    <tr>
+                                        <td><input type="text" placeholder="e.g. Incentive, Joining Bonus..." value="@_sdVarEarnRows[_idx].Name"
+                                                   @onchange="@((e) => { var r = _sdVarEarnRows[_idx]; _sdVarEarnRows[_idx] = (e.Value?.ToString() ?? "", r.Type, r.Amount); })" /></td>
+                                        <td>
+                                            <select style="width:100%;border:1px solid #e0e0e0;border-radius:4px;padding:4px;font-size:12px"
+                                                    @onchange="@((e) => { var r = _sdVarEarnRows[_idx]; _sdVarEarnRows[_idx] = (r.Name, e.Value?.ToString() ?? "Fully Taxable", r.Amount); })">
+                                                <option value="Fully Taxable" selected="@(_sdVarEarnRows[_idx].Type == "Fully Taxable")">Fully Taxable</option>
+                                                <option value="Partly Exempt" selected="@(_sdVarEarnRows[_idx].Type == "Partly Exempt")">Partly Exempt</option>
+                                                <option value="Exempt" selected="@(_sdVarEarnRows[_idx].Type == "Exempt")">Exempt</option>
+                                            </select>
+                                        </td>
+                                        <td><input type="number" style="text-align:right" value="@_sdVarEarnRows[_idx].Amount"
+                                                   @onchange="@((e) => { var r = _sdVarEarnRows[_idx]; _sdVarEarnRows[_idx] = (r.Name, r.Type, double.TryParse(e.Value?.ToString(), out var v) ? v : 0); })" /></td>
+                                        <td style="text-align:right"><button class="sd-btn-icon" @onclick="@(() => _sdVarEarnRows.RemoveAt(_idx))">✕</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="2" class="sd-color-orange">Variable Total</td>
+                                    <td style="text-align:right" class="sd-color-orange">₹@_sdVarTotal.ToString("N0")</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="font-weight:700;color:#1565C0;font-size:14px">GROSS EARNINGS</td>
+                                    <td style="text-align:right;font-weight:700;color:#1565C0;font-size:16px">₹@_sdGrossTotal.ToString("N0")</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- RIGHT: Deductions + Tax -->
+                <div>
+                    <!-- Fixed Deductions -->
+                    <div class="sd-paper">
+                        <div class="sd-sec-head sd-sec-head-red">📤 Fixed Deductions</div>
+                        <table class="sd-dyn-table">
+                            <thead><tr><th style="width:55%">Component</th><th style="text-align:right">Amount (₹)</th></tr></thead>
+                            <tbody>
+                                <tr><td>PF Employee (12%)</td><td><input type="number" style="text-align:right" @bind="_sdPf" @bind:event="oninput" /></td></tr>
+                                <tr><td>VPF</td><td><input type="number" style="text-align:right" @bind="_sdVpf" @bind:event="oninput" /></td></tr>
+                                <tr><td>ESI Employee (0.75%)</td><td><input type="number" style="text-align:right" @bind="_sdEsi" @bind:event="oninput" /></td></tr>
+                                <tr><td>Professional Tax</td><td><input type="number" style="text-align:right" @bind="_sdPt" @bind:event="oninput" /></td></tr>
+                                <tr><td>TDS Deducted</td><td><input type="number" style="text-align:right" @bind="_sdTds" @bind:event="oninput" /></td></tr>
+                            </tbody>
+                            <tfoot>
+                                <tr><td class="sd-color-red">Fixed Deductions</td><td style="text-align:right" class="sd-color-red">₹@_sdFixedDedTotal.ToString("N0")</td></tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Variable Deductions -->
+                    <div class="sd-paper sd-accent-orange">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <div class="sd-sec-head sd-sec-head-red" style="margin-bottom:0">➖ Variable Deductions</div>
+                            <button class="sd-btn-add" style="border-color:#c62828;color:#c62828" @onclick="AddVarDedRow">+ Add Row</button>
+                        </div>
+                        <div class="sd-info-box" style="border-color:#e65100">One-time deductions this month — loan recovery, advance, canteen, etc.</div>
+                        <table class="sd-dyn-table">
+                            <thead><tr><th style="width:65%">Name / Description</th><th style="text-align:right;width:25%">Amount (₹)</th><th style="width:10%"></th></tr></thead>
+                            <tbody>
+                                @for (int _di = 0; _di < _sdVarDedRows.Count; _di++)
+                                {
+                                    var _idx = _di;
+                                    <tr>
+                                        <td><input type="text" placeholder="Description" value="@_sdVarDedRows[_idx].Name"
+                                                   @onchange="@((e) => { var r = _sdVarDedRows[_idx]; _sdVarDedRows[_idx] = (e.Value?.ToString() ?? "", r.Amount); })" /></td>
+                                        <td><input type="number" style="text-align:right" value="@_sdVarDedRows[_idx].Amount"
+                                                   @onchange="@((e) => { var r = _sdVarDedRows[_idx]; _sdVarDedRows[_idx] = (r.Name, double.TryParse(e.Value?.ToString(), out var v) ? v : 0); })" /></td>
+                                        <td style="text-align:right"><button class="sd-btn-icon" @onclick="@(() => _sdVarDedRows.RemoveAt(_idx))">✕</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td class="sd-color-red">Variable Deductions</td>
+                                    <td style="text-align:right" class="sd-color-red">₹@_sdVarDedTotal.ToString("N0")</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight:700;color:#c62828;font-size:14px">TOTAL DEDUCTIONS</td>
+                                    <td style="text-align:right;font-weight:700;color:#c62828;font-size:16px">₹@_sdTotalDed.ToString("N0")</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Tax Summary panel -->
+                    <div class="sd-tax-panel">
+                        <div style="font-size:11px;font-weight:700;color:#1565C0;margin-bottom:10px">📊 Tax Summary (after Compute)</div>
+                        <div class="sd-tax-grid">
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">Annual Gross</div>
+                                <div class="sd-tv">@(_sdAnnual != null ? "₹" + (_sdAnnual.ChosenRegime=="New" ? _sdAnnual.NewRegime : _sdAnnual.OldRegime).GrossSalary.ToString("N0") : "—")</div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">Taxable Income</div>
+                                <div class="sd-tv">@(_sdAnnual != null ? "₹" + (_sdAnnual.ChosenRegime=="New" ? _sdAnnual.NewRegime : _sdAnnual.OldRegime).TotalIncome.ToString("N0") : "—")</div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">New Regime Tax</div>
+                                <div class="sd-tv">
+                                    @(_sdAnnual != null ? "₹" + _sdAnnual.NewRegime.TotalTax.ToString("N0") : "—")
+                                    @if (_sdAnnual?.ChosenRegime == "New") { <span class="sd-chip sd-chip-green">Chosen</span> }
+                                </div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">Old Regime Tax</div>
+                                <div class="sd-tv">
+                                    @(_sdAnnual != null ? "₹" + _sdAnnual.OldRegime.TotalTax.ToString("N0") : "—")
+                                    @if (_sdAnnual?.ChosenRegime == "Old") { <span class="sd-chip sd-chip-blue">Chosen</span> }
+                                </div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">YTD TDS</div>
+                                <div class="sd-tv">@(_sdAnnual != null ? "₹" + _sdAnnual.YtdTdsDeducted.ToString("N0") : "—")</div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">Balance Tax</div>
+                                <div class="sd-tv">@(_sdAnnual != null ? "₹" + _sdAnnual.BalanceTax.ToString("N0") : "—")</div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">TDS This Month</div>
+                                <div class="sd-tv sd-tv-tds">₹@_sdTds.ToString("N0")</div>
+                            </div>
+                            <div class="sd-tax-item">
+                                <div class="sd-tl">Net Pay</div>
+                                <div class="sd-tv" style="color:#2e7d32">₹@_sdNetPay.ToString("N0")</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                        <button class="sd-btn sd-btn-primary" @onclick="SdCompute" disabled="@_sdComputing">
+                            @if (_sdComputing) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" /> }
+                            🧮 Compute TDS
+                        </button>
+                        <button class="sd-btn sd-btn-success" @onclick="SdSaveMonth">💾 Save Month</button>
+                        <button class="sd-btn sd-btn-outlined" @onclick="SdCopyToAll">📋 Copy to All Months</button>
+                        <button class="sd-btn sd-btn-outlined" style="border-color:#1565c0;color:#1565c0" @onclick="() => SdDownloadAnnual(html: true)">📄 Income Tax PDF</button>
+                        <button class="sd-btn sd-btn-outlined" style="border-color:#1b5e20;color:#1b5e20" @onclick="() => SdDownloadAnnual(html: false)">📊 Income Tax Excel</button>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="sd-paper" style="color:#888;padding:24px;text-align:center">Select an employee to enter salary data.</div>
+        }
+    </MudTabPanel>
+
+    @* ── TAB 3: TAX DECLARATIONS ── *@
+    <MudTabPanel Text="Tax Declarations" Icon="@Icons.Material.Filled.Receipt">
+        <div class="td-toolbar">
+            <div class="td-toolbar-left">
+                <div class="td-emp-select">
+                    <MudSelect T="int" Value="_declEmpId" Label="Employee" Variant="Variant.Outlined"
+                               Style="min-width:260px" AnchorOrigin="Origin.BottomCenter"
+                               ValueChanged="@((int id) => { _declEmpId = id; LoadDeclaration(); })">
+                        @foreach (var e in _employees)
+                        {
+                            <MudSelectItem Value="@e.Id">@e.Name (@e.EmployeeCode)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </div>
+            </div>
+        </div>
+
+        @if (_decl != null)
+        {
+            <div class="td-layout">
+
+                @* ── HRA / Rent Section ── *@
+                <div class="td-card">
+                    <div class="td-card-head td-head-blue">
+                        <span class="td-head-icon">🏠</span>
+                        <span>HRA &amp; Rent Details</span>
+                        <span class="td-head-note">u/s 10(13A)</span>
+                    </div>
+                    <div class="td-card-body">
+                        <div class="td-row-3">
+                            <div class="td-field">
+                                <label>Annual Rent Paid (₹)</label>
+                                <input type="number" min="0" step="1000" class="td-input"
+                                       value="@_decl.RentPaid"
+                                       @onchange="e => _decl.RentPaid = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Leave 0 if not claiming HRA</span>
+                            </div>
+                            <div class="td-field">
+                                <label>City Type</label>
+                                <select class="td-select" @bind="_decl.HraCityType">
+                                    <option value="Metro">Metro (50% of Basic)</option>
+                                    <option value="Non-Metro">Non-Metro (40% of Basic)</option>
+                                </select>
+                                <span class="td-hint">Metro: Delhi, Mumbai, Chennai, Kolkata</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Landlord PAN</label>
+                                <input type="text" maxlength="10" placeholder="AAAAA0000A" class="td-input td-upper"
+                                       value="@_decl.LandlordPan"
+                                       @onchange="e => _decl.LandlordPan = (e.Value?.ToString() ?? string.Empty).ToUpperInvariant()" />
+                                <span class="td-hint">Required if rent &gt; ₹1L/year</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ── Chapter VI-A ── *@
+                <div class="td-card">
+                    <div class="td-card-head td-head-green">
+                        <span class="td-head-icon">📋</span>
+                        <span>Chapter VI-A Deductions</span>
+                        <span class="td-head-note">Old Regime only</span>
+                    </div>
+                    <div class="td-card-body">
+                        <div class="td-row-4">
+                            <div class="td-field">
+                                <label>Sec 80C <span class="td-cap">max ₹1,50,000</span></label>
+                                <input type="number" min="0" max="150000" step="1000" class="td-input"
+                                       value="@_decl.Sec80C"
+                                       @onchange="e => _decl.Sec80C = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">LIC, ELSS, PPF, Tax Saver FD, NSC</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80D — Self &amp; Family <span class="td-cap">max ₹25K / ₹50K</span></label>
+                                <input type="number" min="0" max="50000" step="500" class="td-input"
+                                       value="@_decl.Sec80D_Self"
+                                       @onchange="e => _decl.Sec80D_Self = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Health insurance — ₹50K if self is senior citizen</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80D — Parents <span class="td-cap">max ₹25K / ₹50K</span></label>
+                                <input type="number" min="0" max="50000" step="500" class="td-input"
+                                       value="@_decl.Sec80D_Parents"
+                                       @onchange="e => _decl.Sec80D_Parents = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">₹50K cap if parent is senior citizen</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80CCD(1B) — NPS <span class="td-cap">max ₹50,000</span></label>
+                                <input type="number" min="0" max="50000" step="500" class="td-input"
+                                       value="@_decl.Sec80CCD_Employee"
+                                       @onchange="e => _decl.Sec80CCD_Employee = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Additional NPS contribution (employee)</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80E — Education Loan <span class="td-cap">no limit</span></label>
+                                <input type="number" min="0" step="1000" class="td-input"
+                                       value="@_decl.Sec80E"
+                                       @onchange="e => _decl.Sec80E = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Interest on higher education loan</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80EEA — Housing Loan <span class="td-cap">max ₹1,50,000</span></label>
+                                <input type="number" min="0" max="150000" step="1000" class="td-input"
+                                       value="@_decl.Sec80EEA"
+                                       @onchange="e => _decl.Sec80EEA = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Affordable housing — first-time buyer</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80G — Donations <span class="td-cap">varies</span></label>
+                                <input type="number" min="0" step="500" class="td-input"
+                                       value="@_decl.Sec80G"
+                                       @onchange="e => _decl.Sec80G = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Approved charitable contributions</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80TTA — Savings Interest <span class="td-cap">max ₹10,000</span></label>
+                                <input type="number" min="0" max="10000" step="100" class="td-input"
+                                       value="@_decl.Sec80TTA"
+                                       @onchange="e => _decl.Sec80TTA = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Savings bank interest (non-senior citizen)</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80TTB — Sr. Citizen Interest <span class="td-cap">max ₹50,000</span></label>
+                                <input type="number" min="0" max="50000" step="500" class="td-input"
+                                       value="@_decl.Sec80TTB"
+                                       @onchange="e => _decl.Sec80TTB = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Interest income — senior citizens only</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80DD — Disabled Dependent <span class="td-cap">max ₹1,25,000</span></label>
+                                <input type="number" min="0" max="125000" step="1000" class="td-input"
+                                       value="@_decl.Sec80DD"
+                                       @onchange="e => _decl.Sec80DD = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Medical treatment of disabled dependent</span>
+                            </div>
+                            <div class="td-field">
+                                <label>Sec 80U — Self Disability <span class="td-cap">max ₹1,25,000</span></label>
+                                <input type="number" min="0" max="125000" step="1000" class="td-input"
+                                       value="@_decl.Sec80U"
+                                       @onchange="e => _decl.Sec80U = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Employee with disability certificate</span>
+                            </div>
+                            <div class="td-field">
+                                <label>LTA Exemption <span class="td-cap">u/s 10(5)</span></label>
+                                <input type="number" min="0" step="500" class="td-input"
+                                       value="@_decl.LtaExemption"
+                                       @onchange="e => _decl.LtaExemption = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">Leave Travel Allowance — old regime only</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ── Other Income + Flags ── *@
+                <div class="td-card">
+                    <div class="td-card-head td-head-orange">
+                        <span class="td-head-icon">💰</span>
+                        <span>Other Income &amp; Flags</span>
+                    </div>
+                    <div class="td-card-body">
+                        <div class="td-row-3">
+                            <div class="td-field">
+                                <label>Income from Other Sources (₹)</label>
+                                <input type="number" min="0" step="1000" class="td-input"
+                                       value="@_decl.IncomeOtherSources"
+                                       @onchange="e => _decl.IncomeOtherSources = double.TryParse(e.Value?.ToString(), out var v) ? v : 0" />
+                                <span class="td-hint">FD interest, dividends, rental income, etc.</span>
+                            </div>
+                            <div class="td-field td-field-check">
+                                <label class="td-check-label">
+                                    <input type="checkbox" class="td-check" checked="@_decl.IsParentSeniorCitizen"
+                                           @onchange="e => _decl.IsParentSeniorCitizen = (bool)(e.Value ?? false)" />
+                                    <span class="td-check-text">
+                                        Parent is Senior Citizen
+                                        <span class="td-hint">80D parents cap raised to ₹50,000</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ── Save button ── *@
+                <div class="td-actions">
+                    <button class="sd-btn sd-btn-primary td-save-btn" @onclick="SaveDeclaration">
+                        <span>💾</span> Save Declaration
+                    </button>
+                </div>
+
+            </div>
+        }
+        else
+        {
+            <div class="td-empty">
+                <div class="td-empty-icon">📄</div>
+                <div>Select an employee and click <strong>Load</strong> to view or edit their tax declaration.</div>
+            </div>
+        }
+    </MudTabPanel>
+
+    @* ── TAB 3: MONTHLY RUN ── *@
+    <MudTabPanel Text="Monthly Run" Icon="@Icons.Material.Filled.PlayArrow">
+        <div class="d-flex align-center gap-3 mb-3 flex-wrap">
+            <MudSelect T="int" Value="_runMonth" Label="Month" Variant="Variant.Outlined"
+                       Style="min-width:120px" AnchorOrigin="Origin.BottomCenter"
+                       ValueChanged="OnRunMonthChanged">
+                @for (int i = 0; i < _monthNames.Length; i++)
+                {
+                    var m = _fyMonths[i];
+                    var name = _monthNames[i];
+                    <MudSelectItem Value="@m">@name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int" @bind-Value="_runYear" Label="Year" Variant="Variant.Outlined"
+                       Style="min-width:100px" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var y in _runYears)
+                {
+                    <MudSelectItem Value="@y">@y</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Calculate"
+                       OnClick="RunBulkPayroll" Disabled="_running">
+                @if (_running) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                Compute Payroll
+            </MudButton>
+            @if (_runResults.Count > 0)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Success"
+                           StartIcon="@Icons.Material.Filled.Save" OnClick="SaveRun">
+                    Save Run
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Upload" OnClick="PushTo24Q">
+                    Push to 24Q
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                           StartIcon="@Icons.Material.Filled.TableChart" OnClick="ExportRunExcel">
+                    Export Excel
+                </MudButton>
+            }
+        </div>
+
+        @* ── Pro-Rata Overrides ── *@
+        @if (_employees.Count > 0)
+        {
+            int _daysInMonth = _runMonth > 0 ? DateTime.DaysInMonth(_runYear > 0 ? _runYear : DateTime.Today.Year, _runMonth) : 30;
+            <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background:#fff8e1;border-radius:8px;border-left:4px solid #f9a825">
+                <div class="d-flex align-center gap-2 mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.DateRange" Color="Color.Warning" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2">Days Worked Override — leave blank for full month (@_daysInMonth days)</MudText>
+                </div>
+                <MudSimpleTable Hover="false" Dense="true">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>PAN</th>
+                            <th>DOJ</th>
+                            <th style="width:150px">Days Worked (of @_daysInMonth)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pr in _proRataRows)
+                        {
+                            <tr style="@(pr.DaysWorked.HasValue && pr.DaysWorked < _daysInMonth ? "background:#fff3cd" : "")">
+                                <td>@pr.Name (@pr.Code)</td>
+                                <td style="font-family:monospace">@pr.Pan</td>
+                                <td style="font-size:12px;color:#64748b">@pr.JoinDate</td>
+                                <td>
+                                    <MudNumericField T="int?" Value="@pr.DaysWorked"
+                                                     ValueChanged="v => pr.DaysWorked = v"
+                                                     Variant="Variant.Outlined" Min="0" Max="@_daysInMonth"
+                                                     Placeholder="Full month" Style="max-width:110px" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        }
+
+        @if (_runResults.Count > 0)
+        {
+            <MudGrid Class="mb-3">
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Gross</MudText>
+                        <MudText Typo="Typo.h6">₹@_runResults.Sum(r => r.Run.GrossSalary).ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total TDS</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">₹@_runResults.Sum(r => r.Run.TdsDeducted).ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total PF</MudText>
+                        <MudText Typo="Typo.h6">₹@_runResults.Sum(r => r.Run.PfEmployee).ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Net Payable</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">₹@_runResults.Sum(r => r.Run.NetPay).ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudDataGrid T="SalaryComputeResult" Items="_runResults" Dense="true"
+                         Hover="true" Striped="true" Bordered="true">
+                <Columns>
+                    <PropertyColumn Property="x => x.Run.EmployeeCode" Title="Code" />
+                    <PropertyColumn Property="x => x.Run.EmployeeName" Title="Employee" />
+                    <TemplateColumn Title="Gross (₹)">
+                        <CellTemplate>@context.Item.Run.GrossSalary.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="HRA Exempt (₹)">
+                        <CellTemplate>@context.Item.Run.HraExemption.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="PF (₹)">
+                        <CellTemplate>@context.Item.Run.PfEmployee.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="ESI (₹)">
+                        <CellTemplate>@context.Item.Run.EsiEmployee.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="PT (₹)">
+                        <CellTemplate>@context.Item.Run.ProfessionalTax.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Taxable (₹)">
+                        <CellTemplate>@context.Item.Run.TaxableIncome.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Annual Tax (₹)">
+                        <CellTemplate>@context.Item.Run.TotalAnnualTax.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Surcharge+Cess (₹)">
+                        <CellTemplate>@((context.Item.Run.Surcharge + context.Item.Run.Cess).ToString("N0"))</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="YTD TDS (₹)">
+                        <CellTemplate>@context.Item.Run.YtdTds.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="TDS This Month (₹)">
+                        <CellTemplate><b>@context.Item.Run.TdsDeducted.ToString("N0")</b></CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Net Pay (₹)">
+                        <CellTemplate><b style="color:#16a34a">@context.Item.Run.NetPay.ToString("N0")</b></CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Regime">
+                        <CellTemplate>
+                            @{
+                                var saving = Math.Abs(context.Item.TaxOldRegime - context.Item.TaxNewRegime);
+                                var recommended = context.Item.RecommendedRegime;
+                                var used = context.Item.Run.TaxRegimeUsed;
+                            }
+                            <div style="display:flex;flex-direction:column;gap:2px">
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(used == "New" ? Color.Info : Color.Secondary)">
+                                    @used
+                                </MudChip>
+                                @if (used != recommended)
+                                {
+                                    <span style="font-size:10px;color:#f59e0b">⚠ @recommended saves ₹@saving.ToString("N0")</span>
+                                }
+                            </div>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Old Regime Tax (₹)">
+                        <CellTemplate>@context.Item.TaxOldRegime.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="New Regime Tax (₹)">
+                        <CellTemplate>@context.Item.TaxNewRegime.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Status">
+                        <CellTemplate>
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@(context.Item.Run.Status == "Processed" ? Color.Success : Color.Default)">
+                                @context.Item.Run.Status
+                            </MudChip>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+
+        @if (_runError != "")
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_runError</MudAlert>
+        }
+    </MudTabPanel>
+
+    @* ── TAB 4: SALARY SLIPS ── *@
+    <MudTabPanel Text="Salary Slips" Icon="@Icons.Material.Filled.Description">
+        <div class="d-flex align-center gap-3 mb-4">
+            <MudSelect T="int" Value="_slipMonth" ValueChanged="@((int m) => { _slipMonth = m; LoadSavedRuns(); })"
+                       Label="Month" Variant="Variant.Outlined"
+                       Style="min-width:120px" AnchorOrigin="Origin.BottomCenter">
+                @for (int i = 0; i < _monthNames.Length; i++)
+                {
+                    var m = _fyMonths[i];
+                    var name = _monthNames[i];
+                    <MudSelectItem Value="@m">@name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int" Value="_slipYear" ValueChanged="@((int y) => { _slipYear = y; LoadSavedRuns(); })"
+                       Label="Year" Variant="Variant.Outlined"
+                       Style="min-width:100px" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var y in _runYears)
+                {
+                    <MudSelectItem Value="@y">@y</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                       StartIcon="@Icons.Material.Filled.Archive" OnClick="DownloadFullYearZip"
+                       Disabled="_zipping">
+                @if (_zipping) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                Full Year ZIP
+            </MudButton>
+        </div>
+
+        @if (_savedRuns.Count == 0 && _slipLoaded)
+        {
+            <MudAlert Severity="Severity.Info">No payroll runs found for this month/year.</MudAlert>
+        }
+
+        <MudDataGrid T="PayrollRun" Items="_savedRuns" Dense="true" Hover="true" Striped="true" Bordered="true">
+            <Columns>
+                <PropertyColumn Property="x => x.EmployeeCode" Title="Code" />
+                <PropertyColumn Property="x => x.EmployeeName" Title="Employee" />
+                <TemplateColumn Title="Gross">
+                    <CellTemplate>₹@context.Item.GrossSalary.ToString("N0")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="TDS">
+                    <CellTemplate>₹@context.Item.TdsDeducted.ToString("N0")</CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Net Pay">
+                    <CellTemplate><b>₹@context.Item.NetPay.ToString("N0")</b></CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="x => x.Status" Title="Status" />
+                <TemplateColumn Title="Download" Sortable="false">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small"
+                                       Color="Color.Error"
+                                       OnClick="() => DownloadSlip(context.Item, html: true)" />
+                        <MudIconButton Icon="@Icons.Material.Filled.TableChart" Size="Size.Small"
+                                       Color="Color.Success"
+                                       OnClick="() => DownloadSlip(context.Item, html: false)" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudTabPanel>
+
+    @* ── TAB 5: YEAR SUMMARY ── *@
+    <MudTabPanel Text="Year Summary" Icon="@Icons.Material.Filled.Summarize">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mb-4"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadYearSummary">
+            Load Year Summary
+        </MudButton>
+
+        @if (_yearSummaries.Count > 0)
+        {
+            <MudDataGrid T="EmployeeYearSummary" Items="_yearSummaries" Dense="true"
+                         Hover="true" Striped="true" Bordered="true">
+                <Columns>
+                    <PropertyColumn Property="x => x.EmployeeCode" Title="Code" />
+                    <PropertyColumn Property="x => x.EmployeeName" Title="Employee" />
+                    <TemplateColumn Title="Months Run">
+                        <CellTemplate>@context.Item.MonthsRun</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Total Gross">
+                        <CellTemplate>₹@context.Item.TotalGross.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Total TDS">
+                        <CellTemplate>₹@context.Item.TotalTds.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Total PF">
+                        <CellTemplate>₹@context.Item.TotalPf.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Total PT">
+                        <CellTemplate>₹@context.Item.TotalPt.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Total Net">
+                        <CellTemplate><b>₹@context.Item.TotalNet.ToString("N0")</b></CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Download" Sortable="false">
+                        <CellTemplate>
+                            <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="() => DownloadAnnual(context.Item, html: true)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.TableChart" Size="Size.Small"
+                                           Color="Color.Success"
+                                           OnClick="() => DownloadAnnual(context.Item, html: false)" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudTabPanel>
+
+    @* ── TAB 6: 24Q FILING ── *@
+    <MudTabPanel Text="24Q Filing" Icon="@Icons.Material.Filled.AssignmentTurnedIn">
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+            24Q covers salary TDS (Section 192). After running and saving Monthly Payroll, use "Push to 24Q"
+            in the Monthly Run tab to create TDS entries. View pushed entries here.
+        </MudAlert>
+
+        <div class="d-flex align-center gap-3 mb-3 flex-wrap">
+            <MudSelect T="string" @bind-Value="_q24Quarter" Label="Quarter" Variant="Variant.Outlined" ShrinkLabel="true"
+                       Style="min-width:100px" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem Value="@("Q1")">Q1 (Apr–Jun)</MudSelectItem>
+                <MudSelectItem Value="@("Q2")">Q2 (Jul–Sep)</MudSelectItem>
+                <MudSelectItem Value="@("Q3")">Q3 (Oct–Dec)</MudSelectItem>
+                <MudSelectItem Value="@("Q4")">Q4 (Jan–Mar)</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Search" OnClick="Load24QEntries">
+                Load
+            </MudButton>
+        </div>
+
+        @if (_q24Entries.Count > 0)
+        {
+            <MudGrid Class="mb-3">
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Employees</MudText>
+                        <MudText Typo="Typo.h6">@_q24Entries.Select(e => e.DeducteeId).Distinct().Count()</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Gross</MudText>
+                        <MudText Typo="Typo.h6">₹@_q24Entries.Sum(e => e.Amount).ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total TDS</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">₹@_q24Entries.Sum(e => e.TdsAmount).ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Entries</MudText>
+                        <MudText Typo="Typo.h6">@_q24Entries.Count</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudDataGrid T="TdsEntry" Items="_q24Entries" Dense="true" Hover="true" Striped="true" Bordered="true">
+                <Columns>
+                    <PropertyColumn Property="x => x.DeducteeName" Title="Employee" />
+                    <PropertyColumn Property="x => x.DeducteePan" Title="PAN" />
+                    <PropertyColumn Property="x => x.Section" Title="Section" />
+                    <PropertyColumn Property="x => x.EntryDate" Title="Month/Date" />
+                    <TemplateColumn Title="Gross (₹)">
+                        <CellTemplate>@context.Item.Amount.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="TDS (₹)">
+                        <CellTemplate>@context.Item.TdsAmount.ToString("N0")</CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Status">
+                        <CellTemplate>
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@(context.Item.Status == "Paid" ? Color.Success : Color.Warning)">
+                                @context.Item.Status
+                            </MudChip>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+        else if (_q24Loaded)
+        {
+            <MudAlert Severity="Severity.Info">
+                No 24Q entries found for @_q24Quarter. Use Monthly Run → Push to 24Q to populate.
+            </MudAlert>
+        }
+    </MudTabPanel>
+
+</MudTabs>
+
+@code {
+    private List<Employee> _employees = new();
+    private static readonly int[]    _fyMonths   = { 4,5,6,7,8,9,10,11,12,1,2,3 };
+    private static readonly string[] _monthNames = { "April","May","June","July","August","September","October","November","December","January","February","March" };
+    private int[] _runYears = Array.Empty<int>();
+
+    // Employee tab
+    private bool      _showEmployeeForm;
+    private Employee? _editingEmployee;
+    private string    _empError = "";
+    private DateTime? _empDob;
+    private DateTime? _empJoin;
+    private DateTime? _empLeave;
+    private DateTime? _empSalEffective;
+    private List<(string Name, double Amount)> _otherAllowances = new();
+    private bool _salaryStructureNeedsReview = false; // true when DB has old combined other_allowance
+    private string _empGratuityFrom = "";
+    private string _empNomineeName = "";
+    private string _empNomineeRelation = "";
+
+    private static readonly string[] _indianStates = {
+        "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
+        "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
+        "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab",
+        "Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh",
+        "Uttarakhand","West Bengal","Delhi","Jammu & Kashmir","Ladakh","Other"
+    };
+
+    // Salary data tab
+    private int    _sdEmpId;
+    private int    _sdMonth;
+    private bool[] _sdMonthHasData = new bool[12];
+    private MonthlySalaryEntry? _sdCurEntry;
+    private AnnualComputation?  _sdAnnual;
+    private bool   _sdComputing;
+    private double _sdTds;
+    // earnings
+    private double _sdBasic, _sdGradePay, _sdHra, _sdDaAmt;
+    private double _sdBonus, _sdCommission, _sdAdvance, _sdArrears, _sdOther;
+    private double _sdSpecial, _sdMedical, _sdLta;
+    private double _sdNpsEmployer, _sdPerqTotal, _sdPerqExempted;
+    private double _sdLeaveEnc, _sdLeaveEncEx;
+    // deductions
+    private double _sdPf, _sdVpf, _sdPt, _sdEsi;
+    private List<(string Name, string Type, double Amount)> _sdVarEarnRows = new();
+    private List<(string Name, double Amount)> _sdVarDedRows = new();
+    void AddVarEarnRow() => _sdVarEarnRows.Add(("", "Fully Taxable", 0));
+
+    // Normalize any date string to dd-MM-yyyy. Accepts dd-MM-yyyy, dd/MM/yyyy, dd-MMM-yyyy, yyyyMMdd, or empty.
+    static string NormDate(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        s = s.Trim();
+        // Already dd-MM-yyyy
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{2}-\d{2}-\d{4}$")) return s;
+        var formats = new[] { "dd-MMM-yyyy", "dd/MM/yyyy", "dd-MMM-yyyy", "d/M/yyyy", "yyyy-MM-dd", "yyyyMMdd", "ddMMyyyy" };
+        if (DateTime.TryParseExact(s, formats, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dt))
+            return dt.ToString("dd-MMM-yyyy");
+        if (DateTime.TryParse(s, out var dt2))
+            return dt2.ToString("dd-MMM-yyyy");
+        return s; // return as-is if not parseable
+    }
+    void AddVarDedRow()  => _sdVarDedRows.Add(("", 0));
+
+    // Declaration tab
+    private int             _declEmpId;
+    private TaxDeclaration? _decl;
+
+    // Monthly run tab
+    private int    _runMonth;
+    private int    _runYear;
+    private bool   _running;
+    private string _runError = "";
+    private List<SalaryComputeResult> _runResults = new();
+
+    // Salary slips tab
+    private int              _slipMonth;
+    private int              _slipYear;
+    private bool             _slipLoaded;
+    private List<PayrollRun> _savedRuns = new();
+
+    // Year summary tab
+    private List<EmployeeYearSummary> _yearSummaries = new();
+
+    // Salary slips tab
+    private bool _zipping;
+
+    // 24Q Filing tab
+    private string _q24Quarter = "Q1";
+    private bool _q24Loaded;
+    private List<TdsEntry> _q24Entries = new();
+
+    // Pro-rata grid
+    private List<ProRataRow> _proRataRows = new();
+    private class ProRataRow { public int EmpId; public string Name=""; public string Code=""; public string Pan=""; public string JoinDate=""; public int? DaysWorked; }
+
+    protected override void OnInitialized()
+    {
+        LoadEmployees();
+        var now = DateTime.Today;
+        _runMonth  = now.Month;
+        _runYear   = now.Year;
+        _slipMonth = now.Month;
+        _slipYear  = now.Year;
+        LoadSavedRuns();
+        _sdMonth   = 0;
+        OnRunMonthChanged(_runMonth);
+
+        var fy = AppState.CurrentFY;
+        if (fy.Length >= 4 && int.TryParse(fy[..4], out var fyStart))
+            _runYears = new[] { fyStart, fyStart + 1 };
+        else
+            _runYears = new[] { now.Year };
+    }
+
+    void LoadEmployees()
+    {
+        _employees = PayrollSvc.GetEmployees(AppState.CurrentDeductorId);
+    }
+
+    void OpenAddEmployee()
+    {
+        _editingEmployee = new Employee
+        {
+            DeductorId = AppState.CurrentDeductorId,
+            Salary     = new SalaryStructure(),
+            IsActive   = true,
+            TaxRegime  = "New",
+            Sex        = "Male"
+        };
+        _empDob = null; _empJoin = null; _empLeave = null; _empSalEffective = null;
+        _empError = "";
+        _otherAllowances = new List<(string, double)> { ("Transport Allowance", 0), ("Telephone / Internet Allowance", 0) };
+        _showEmployeeForm = true;
+    }
+
+    void OpenEditEmployee(Employee emp)
+    {
+        _empDob          = DateTime.TryParse(emp.DateOfBirth, out var dob)   ? dob   : null;
+        _empJoin         = DateTime.TryParse(emp.JoinDate,    out var join)  ? join  : null;
+        _empLeave        = DateTime.TryParse(emp.LeavingDate, out var leave) ? leave : null;
+        _empSalEffective = DateTime.TryParse(emp.Salary?.EffectiveFrom, out var eff) ? eff : null;
+        // Restore named allowances from saved OtherAllowance total
+        // Detect old-data rows: special/medical/lta all 0 but other_allowance is large —
+        // could be the pre-migration combined sum. Flag for user review.
+        bool hasOldCombined = emp.Salary != null
+            && emp.Salary.SpecialAllowance == 0 && emp.Salary.MedicalAllowance == 0
+            && emp.Salary.Lta == 0 && emp.Salary.OtherAllowance > 0;
+        _salaryStructureNeedsReview = hasOldCombined;
+        _otherAllowances = emp.Salary?.OtherAllowance > 0
+            ? new List<(string, double)> { ("Other Allowances", emp.Salary.OtherAllowance) }
+            : new List<(string, double)>();
+        _empGratuityFrom = ""; _empNomineeName = ""; _empNomineeRelation = "";
+        _editingEmployee = new Employee
+        {
+            Id             = emp.Id,
+            DeductorId     = emp.DeductorId,
+            EmployeeCode   = emp.EmployeeCode,
+            Name           = emp.Name,
+            FathersName    = emp.FathersName,
+            Sex            = emp.Sex,
+            DateOfBirth    = NormDate(emp.DateOfBirth),
+            JoinDate       = NormDate(emp.JoinDate),
+            LeavingDate    = NormDate(emp.LeavingDate),
+            Pan            = emp.Pan,
+            PfNumber       = emp.PfNumber,
+            WardCircleRange        = emp.WardCircleRange,
+            StdCode                = emp.StdCode,
+            TelephoneNo            = emp.TelephoneNo,
+            Designation    = emp.Designation,
+            Department     = emp.Department,
+            Email          = emp.Email,
+            Phone          = emp.Phone,
+            BankAccount    = emp.BankAccount,
+            BankIfsc       = emp.BankIfsc,
+            FlatDoorBlockNo        = emp.FlatDoorBlockNo,
+            PremisesBuildingVillage= emp.PremisesBuildingVillage,
+            RoadStreetPostOffice   = emp.RoadStreetPostOffice,
+            AreaLocality           = emp.AreaLocality,
+            TownCityDistrict       = emp.TownCityDistrict,
+            State          = emp.State,
+            PinCode        = emp.PinCode,
+            TaxRegime      = emp.TaxRegime,
+            HraMonthlyBasis        = emp.HraMonthlyBasis,
+            DaForRetirement        = emp.DaForRetirement,
+            IsDifferentlyAbled     = emp.IsDifferentlyAbled,
+            IsActive       = emp.IsActive,
+            // extended fields
+            AadhaarNumber      = emp.AadhaarNumber,
+            ResidentialStatus  = emp.ResidentialStatus,
+            MaritalStatus      = emp.MaritalStatus,
+            BloodGroup         = emp.BloodGroup,
+            EmploymentType     = emp.EmploymentType,
+            WorkEmail          = emp.WorkEmail,
+            EmergencyContact   = emp.EmergencyContact,
+            EmergencyMobile    = emp.EmergencyMobile,
+            Uan                = emp.Uan,
+            EsiIpNumber        = emp.EsiIpNumber,
+            BankName           = emp.BankName,
+            BankBranch         = emp.BankBranch,
+            BankAccountType    = emp.BankAccountType,
+            PrevEmployerName   = emp.PrevEmployerName,
+            PrevEmployerIncome = emp.PrevEmployerIncome,
+            PrevEmployerTds    = emp.PrevEmployerTds,
+            Salary         = emp.Salary == null ? new SalaryStructure() : new SalaryStructure
+            {
+                Id               = emp.Salary.Id,
+                EmployeeId       = emp.Salary.EmployeeId,
+                Basic            = emp.Salary.Basic,
+                Hra              = emp.Salary.Hra,
+                Da               = emp.Salary.Da,
+                SpecialAllowance = emp.Salary.SpecialAllowance,
+                MedicalAllowance = emp.Salary.MedicalAllowance,
+                Lta              = emp.Salary.Lta,
+                OtherAllowance   = emp.Salary.OtherAllowance,
+                PfApplicable     = emp.Salary.PfApplicable,
+                PfFixedAmount    = emp.Salary.PfFixedAmount,
+                EsiApplicable    = emp.Salary.EsiApplicable,
+                PtState          = emp.Salary.PtState,
+                EffectiveFrom    = NormDate(emp.Salary.EffectiveFrom),
+            }
+        };
+        _empError = "";
+        _showEmployeeForm = true;
+    }
+
+    void CancelEmployeeForm()
+    {
+        _showEmployeeForm = false;
+        _editingEmployee  = null;
+    }
+
+    void SaveEmployee()
+    {
+        if (_editingEmployee == null) return;
+        if (string.IsNullOrWhiteSpace(_editingEmployee.EmployeeCode)) { _empError = "Employee Code is required."; return; }
+        if (string.IsNullOrWhiteSpace(_editingEmployee.Name))         { _empError = "Name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_editingEmployee.Pan))          { _empError = "PAN is required."; return; }
+        if (_empJoin == null)                                          { _empError = "Date of Joining is required."; return; }
+
+        // Flush named allowances total into the salary structure before saving
+        if (_editingEmployee.Salary != null)
+            _editingEmployee.Salary.OtherAllowance = _otherAllowances.Sum(a => a.Amount);
+
+        var (ok, msg) = PayrollSvc.SaveEmployee(_editingEmployee);
+        if (!ok) { _empError = msg; return; }
+
+        _salaryStructureNeedsReview = false;
+        LoadEmployees();
+        _showEmployeeForm = false;
+        _editingEmployee  = null;
+        Snackbar.Add("Employee saved.", Severity.Success);
+    }
+
+    async Task DeleteEmployee(Employee emp)
+    {
+        var confirmed = await DialogSvc.ShowMessageBox(
+            "Delete Employee?",
+            $"Delete '{emp.Name}' ({emp.EmployeeCode})? All payroll runs for this employee will also be removed.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true) return;
+        PayrollSvc.DeleteEmployee(emp.Id);
+        LoadEmployees();
+        Snackbar.Add("Employee deleted.", Severity.Info);
+    }
+
+    void LoadDeclaration()
+    {
+        if (_declEmpId == 0) return;
+        _decl = PayrollSvc.GetDeclaration(_declEmpId, AppState.CurrentFY) ?? new TaxDeclaration
+        {
+            EmployeeId    = _declEmpId,
+            FinancialYear = AppState.CurrentFY,
+            HraCityType   = "Non-Metro"
+        };
+    }
+
+    void SaveDeclaration()
+    {
+        if (_decl == null) return;
+        PayrollSvc.SaveDeclaration(_decl);
+        Snackbar.Add("Declaration saved.", Severity.Success);
+    }
+
+    void OnRunMonthChanged(int month)
+    {
+        _runMonth = month;
+        // Rebuild pro-rata grid: flag employees who joined mid-month
+        int fyStart = 0;
+        if (AppState.CurrentFY.Length >= 4) int.TryParse(AppState.CurrentFY[..4], out fyStart);
+        int yr = _runMonth >= 4 ? fyStart : fyStart + 1;
+        if (yr == 0) yr = _runYear;
+        var monthStart = new DateTime(yr == 0 ? _runYear : yr, month, 1);
+        var monthEnd   = new DateTime(yr == 0 ? _runYear : yr, month, DateTime.DaysInMonth(yr == 0 ? _runYear : yr, month));
+
+        _proRataRows = _employees.Where(e => e.IsActive)
+            .Select(e => {
+                DateTime.TryParse(e.JoinDate, out var jd);
+                bool isMidMonthJoiner = !string.IsNullOrEmpty(e.JoinDate) && jd >= monthStart && jd <= monthEnd;
+                return new ProRataRow
+                {
+                    EmpId    = e.Id,
+                    Name     = e.Name,
+                    Code     = e.EmployeeCode,
+                    Pan      = e.Pan,
+                    JoinDate = e.JoinDate ?? "",
+                    // Pre-fill days for mid-month joiners; others default to null (full month)
+                    DaysWorked = isMidMonthJoiner ? (int?)(monthEnd - jd).Days + 1 : null
+                };
+            })
+            .ToList();
+    }
+
+    async Task RunBulkPayroll()
+    {
+        _runError   = "";
+        _running    = true;
+        _runResults = new();
+        await Task.Yield();
+        try
+        {
+            var overrides = _proRataRows
+                .Where(r => r.DaysWorked.HasValue)
+                .ToDictionary(r => r.EmpId, r => r.DaysWorked!.Value);
+            _runResults = PayrollSvc.RunBulk(
+                AppState.CurrentDeductorId, _runMonth, _runYear,
+                AppState.CurrentFY, overrides.Count > 0 ? overrides : null);
+        }
+        catch (Exception ex) { _runError = ex.Message; }
+        _running = false;
+
+        // Immediately sync computed results to Salary Data so the tab reflects the run
+        foreach (var r in _runResults)
+        {
+            try { SyncRunToSalaryEntry(r.Run); } catch { }
+        }
+
+        // Refresh Salary Data tab if it's already showing one of the computed employees/month
+        if (_sdEmpId > 0 && _sdMonth > 0
+            && _runResults.Any(r => r.Run.EmployeeId == _sdEmpId && r.Run.Month == _runMonth))
+        {
+            SelectSdMonth(_sdMonth);
+            RefreshSdMonthStrip();
+        }
+    }
+
+    void SaveRun()
+    {
+        foreach (var r in _runResults)
+        {
+            r.Run.Status = "Processed";
+            PayrollSvc.SaveRun(r.Run);
+            SyncRunToSalaryEntry(r.Run);
+        }
+        Snackbar.Add($"Saved {_runResults.Count} payroll records as Processed.", Severity.Success);
+
+        // Refresh Salary Data tab if it's showing one of the just-saved employees/month
+        if (_sdEmpId > 0 && _sdMonth > 0
+            && _runResults.Any(r => r.Run.EmployeeId == _sdEmpId && r.Run.Month == _runMonth))
+        {
+            SelectSdMonth(_sdMonth);
+            RefreshSdMonthStrip();
+        }
+    }
+
+    // Monthly Run is authoritative — always overwrites earnings + deductions in DB and in UI fields.
+    void SyncRunToSalaryEntry(PayrollRun run)
+    {
+        try
+        {
+            int fyStart = TaxRules.FyStartYear(run.FinancialYear);
+            int yr = run.Month >= 4 ? fyStart : fyStart + 1;
+
+            var existing = SalarySvc.Get(run.EmployeeId, run.FinancialYear, run.Month);
+            var entry = existing ?? new MonthlySalaryEntry();
+
+            entry.EmployeeId      = run.EmployeeId;
+            entry.DeductorId      = run.DeductorId;
+            entry.FinancialYear   = run.FinancialYear;
+            entry.Month           = run.Month;
+            entry.Year            = yr;
+
+            entry.Basic            = run.Basic;
+            entry.HRA              = run.Hra;
+            entry.DaAmount         = run.Da;
+            entry.SpecialAllowance = run.Special;
+            entry.MedicalAllowance = run.Medical;
+            entry.Lta              = run.Lta;
+            entry.OtherAllowances  = run.Other;
+            entry.PfEmployee       = run.PfEmployee;
+            entry.EsiEmployee      = run.EsiEmployee;
+            entry.ProfessionalTax  = run.ProfessionalTax;
+            entry.TdsDeducted      = run.TdsDeducted;
+
+            entry.RecalcGross();
+            SalarySvc.Save(entry);
+
+            // If this run matches the currently displayed Salary Data entry, update UI fields live
+            if (run.EmployeeId == _sdEmpId && run.Month == _sdMonth)
+                ApplyRunToSdFields(run);
+        }
+        catch (Exception ex) { Snackbar.Add("Salary sync error: " + ex.Message, Severity.Error); }
+    }
+
+    // Update Salary Data UI fields directly from a run result (no DB round-trip needed)
+    void ApplyRunToSdFields(PayrollRun run)
+    {
+        _sdBasic   = run.Basic;
+        _sdHra     = run.Hra;
+        _sdDaAmt   = run.Da;
+        _sdSpecial = run.Special;
+        _sdMedical = run.Medical;
+        _sdLta     = run.Lta;
+        _sdOther   = run.Other;
+        _sdPf      = run.PfEmployee;
+        _sdEsi     = run.EsiEmployee;
+        _sdPt      = run.ProfessionalTax;
+        _sdTds     = run.TdsDeducted;
+    }
+
+    void PushTo24Q()
+    {
+        try
+        {
+            // Auto-save runs first so they get IDs (required for MarkAsPushed)
+            foreach (var r in _runResults.Where(r => r.Run.Id == 0))
+            {
+                r.Run.Status = "Processed";
+                PayrollSvc.SaveRun(r.Run);
+                SyncRunToSalaryEntry(r.Run);
+            }
+            var runs = _runResults.Select(r => r.Run).ToList();
+            int pushed = PayrollSvc.PushTo24Q(runs, AppState.CurrentDeductorId);
+            if (pushed > 0)
+                Snackbar.Add($"Pushed {pushed} entr{(pushed == 1 ? "y" : "ies")} to 24Q.", Severity.Success);
+            else
+                Snackbar.Add("Nothing new to push — all runs already pushed or TDS is zero.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Push failed: " + ex.Message, Severity.Error);
+        }
+    }
+
+    void ExportRunExcel()
+    {
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook();
+            var ws = wb.Worksheets.Add("Payroll Run");
+            var headers = new[] {
+                "Code","Employee","PAN","Gross","HRA Exempt","PF","ESI","PT",
+                "Taxable Income","Annual Tax","Surcharge+Cess","YTD TDS","TDS This Month","Net Pay",
+                "Regime","Old Regime Tax","New Regime Tax","Status"
+            };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                ws.Cell(1, i + 1).Value = headers[i];
+                ws.Cell(1, i + 1).Style.Font.Bold = true;
+                ws.Cell(1, i + 1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#1a55a0");
+                ws.Cell(1, i + 1).Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+            }
+            int row = 2;
+            foreach (var r in _runResults)
+            {
+                var run = r.Run;
+                ws.Cell(row, 1).Value  = run.EmployeeCode;
+                ws.Cell(row, 2).Value  = run.EmployeeName;
+                ws.Cell(row, 3).Value  = run.Pan;
+                ws.Cell(row, 4).Value  = run.GrossSalary;
+                ws.Cell(row, 5).Value  = run.HraExemption;
+                ws.Cell(row, 6).Value  = run.PfEmployee;
+                ws.Cell(row, 7).Value  = run.EsiEmployee;
+                ws.Cell(row, 8).Value  = run.ProfessionalTax;
+                ws.Cell(row, 9).Value  = run.TaxableIncome;
+                ws.Cell(row, 10).Value = run.AnnualTax;
+                ws.Cell(row, 11).Value = run.Surcharge + run.Cess;
+                ws.Cell(row, 12).Value = run.YtdTds;
+                ws.Cell(row, 13).Value = run.TdsDeducted;
+                ws.Cell(row, 14).Value = run.NetPay;
+                ws.Cell(row, 15).Value = run.TaxRegimeUsed;
+                ws.Cell(row, 16).Value = r.TaxOldRegime;
+                ws.Cell(row, 17).Value = r.TaxNewRegime;
+                ws.Cell(row, 18).Value = run.Status;
+                row++;
+            }
+            ws.Columns().AdjustToContents();
+
+            var folder = FolderManager.PayrollRunsFolder;
+            Directory.CreateDirectory(folder);
+            var month = new DateTime(1, _runMonth, 1).ToString("MMM");
+            var path = Path.Combine(folder, $"PayrollRun_{month}{_runYear}_{AppState.CurrentFY.Replace("/","-")}.xlsx");
+            wb.SaveAs(path);
+            FolderManager.OpenFolder(folder);
+            Snackbar.Add($"Exported: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Export failed: " + ex.Message, Severity.Error); }
+    }
+
+    void LoadSavedRuns()
+    {
+        _savedRuns  = PayrollSvc.GetRuns(_slipMonth, _slipYear, AppState.CurrentDeductorId);
+        _slipLoaded = true;
+    }
+
+    void LoadYearSummary()
+    {
+        _yearSummaries = PayrollSvc.GetYearSummary(AppState.CurrentFY, AppState.CurrentDeductorId);
+    }
+
+    async Task DownloadFullYearZip()
+    {
+        _zipping = true;
+        try
+        {
+            var allRuns = await Task.Run(() =>
+                PayrollSvc.GetRunsForFY(AppState.CurrentFY, AppState.CurrentDeductorId));
+            if (!allRuns.Any()) { Snackbar.Add("No runs found for this FY.", Severity.Warning); _zipping = false; return; }
+
+            var folder = Path.Combine(FolderManager.SalarySlipsForFyFolder(AppState.CurrentFY), "AllSlips");
+            Directory.CreateDirectory(folder);
+
+            var ded = DeductorSvc.GetAll().FirstOrDefault(d => d.Id == AppState.CurrentDeductorId) ?? new Deductor();
+            var emps = PayrollSvc.GetEmployees(AppState.CurrentDeductorId);
+
+            await Task.Run(() =>
+            {
+                foreach (var run in allRuns)
+                {
+                    try
+                    {
+                        var emp = emps.FirstOrDefault(e => e.Id == run.EmployeeId)
+                                  ?? new Employee { Id = run.EmployeeId, EmployeeCode = run.EmployeeCode, Name = run.EmployeeName, Pan = run.Pan, TaxRegime = run.TaxRegimeUsed };
+                        var entry = SalarySvc.Get(run.EmployeeId, run.FinancialYear, run.Month)
+                                    ?? BuildEntryFromRun(run);
+                        AnnualComputation annual;
+                        try
+                        {
+                            var decl = PayrollSvc.GetDeclaration(emp.Id, run.FinancialYear)
+                                       ?? new TDSPro.DAL.Models.TaxDeclaration { EmployeeId = emp.Id, FinancialYear = run.FinancialYear };
+                            annual = SalarySvc.ComputeMonth(entry, emp, run.FinancialYear, decl);
+                        }
+                        catch { annual = BuildAnnualFromRun(run); }
+                        SalarySlipExport.GenerateHtml(entry, annual, emp, ded, folder);
+                    }
+                    catch { }
+                }
+            });
+
+            var zipPath = Path.Combine(FolderManager.SalarySlipsFolder,
+                $"AllSlips_{AppState.CurrentFY.Replace("/","-")}.zip");
+            if (File.Exists(zipPath)) File.Delete(zipPath);
+            ZipFile.CreateFromDirectory(folder, zipPath);
+            FolderManager.OpenFolder(Path.GetDirectoryName(zipPath)!);
+            Snackbar.Add($"ZIP created: {Path.GetFileName(zipPath)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+        _zipping = false;
+    }
+
+    void Load24QEntries()
+    {
+        _q24Loaded = true;
+        try
+        {
+            var allEntries = TdsEntrySvc.GetAll(AppState.CurrentDeductorId, AppState.CurrentFY);
+            _q24Entries = allEntries
+                .Where(e => e.Section == "192" || e.Section == "192A" || e.Section == "192B"
+                         || e.Section == "392(1)" || e.PaymentNature == "Salary")
+                .Where(e => e.Quarter == _q24Quarter)
+                .ToList();
+        }
+        catch { _q24Entries = new(); }
+    }
+
+    void DownloadSlip(PayrollRun run, bool html)
+    {
+        try
+        {
+            var entry = SalarySvc.Get(run.EmployeeId, run.FinancialYear, run.Month)
+                        ?? BuildEntryFromRun(run);
+            var emp = PayrollSvc.GetEmployees(AppState.CurrentDeductorId)
+                          .FirstOrDefault(e => e.Id == run.EmployeeId)
+                      ?? new Employee { Id = run.EmployeeId, EmployeeCode = run.EmployeeCode, Name = run.EmployeeName, Pan = run.Pan, TaxRegime = run.TaxRegimeUsed };
+            var deductors = DeductorSvc.GetAll();
+            var ded = deductors.FirstOrDefault(d => d.Id == AppState.CurrentDeductorId) ?? new Deductor();
+
+            // Recompute annual using employee's current regime — saved run may have stale regime
+            AnnualComputation annual;
+            try
+            {
+                var decl = PayrollSvc.GetDeclaration(emp.Id, run.FinancialYear)
+                           ?? new TDSPro.DAL.Models.TaxDeclaration { EmployeeId = emp.Id, FinancialYear = run.FinancialYear };
+                annual = SalarySvc.ComputeMonth(entry, emp, run.FinancialYear, decl);
+            }
+            catch
+            {
+                annual = BuildAnnualFromRun(run);
+            }
+
+            var folder = FolderManager.SalarySlipsForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+
+            var path = html
+                ? SalarySlipExport.GenerateHtml(entry, annual, emp, ded, folder)
+                : SalarySlipExport.GenerateExcel(entry, annual, emp, ded, folder);
+
+            FolderManager.OpenFolder(Path.GetDirectoryName(path)!);
+            Snackbar.Add($"Saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    void DownloadAnnual(EmployeeYearSummary summary, bool html)
+    {
+        try
+        {
+            var emp = PayrollSvc.GetEmployees(AppState.CurrentDeductorId)
+                          .FirstOrDefault(e => e.Id == summary.EmployeeId)
+                      ?? new Employee { Id = summary.EmployeeId, EmployeeCode = summary.EmployeeCode, Name = summary.EmployeeName };
+            var deductors = DeductorSvc.GetAll();
+            var ded = deductors.FirstOrDefault(d => d.Id == AppState.CurrentDeductorId) ?? new Deductor();
+
+            // Build AnnualComputation from year summary runs
+            var runs = PayrollSvc.GetRunsForFY(AppState.CurrentFY, AppState.CurrentDeductorId)
+                           .Where(r => r.EmployeeId == summary.EmployeeId)
+                           .ToList();
+            if (!runs.Any()) { Snackbar.Add("No runs found for this employee.", Severity.Warning); return; }
+
+            var lastRun = runs.OrderByDescending(r => r.Month == 3 ? 15 : r.Month).First();
+            var annual  = BuildAnnualFromRun(lastRun);
+
+            var folder = FolderManager.SalarySlipsForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+
+            var path = html
+                ? SalarySlipExport.GenerateAnnualHtml(annual, emp, AppState.CurrentFY, folder, ded)
+                : SalarySlipExport.GenerateAnnualExcel(annual, emp, AppState.CurrentFY, folder, ded);
+
+            FolderManager.OpenFolder(Path.GetDirectoryName(path)!);
+            Snackbar.Add($"Saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    // ── Salary Data Tab ──────────────────────────────────────────────────────
+
+    void OnTabChanged(int index)
+    {
+        // Tab 1 = Salary Data — reload from DB so Monthly Run results are always visible
+        if (index == 1 && _sdEmpId > 0 && _sdMonth > 0)
+        {
+            SelectSdMonth(_sdMonth);
+            RefreshSdMonthStrip();
+        }
+    }
+
+    void OnSdEmployeeChanged(int empId)
+    {
+        _sdEmpId = empId;
+        _sdAnnual = null;
+        if (empId == 0) { _sdMonth = 0; return; }
+        // Reload employees so salary structure is always fresh from DB
+        LoadEmployees();
+        RefreshSdMonthStrip();
+        SelectSdMonth(DateTime.Today.Month);
+    }
+
+    void RefreshSdMonthStrip()
+    {
+        if (_sdEmpId == 0) return;
+        var saved = SalarySvc.GetAllForFY(_sdEmpId, AppState.CurrentFY);
+        for (int i = 0; i < _fyMonths.Length; i++)
+            _sdMonthHasData[i] = saved.Any(e => e.Month == _fyMonths[i]);
+    }
+
+    void SelectSdMonth(int month)
+    {
+        _sdMonth = month;
+        _sdAnnual = null;
+        if (_sdEmpId == 0) return;
+        int fyStart = TaxRules.FyStartYear(AppState.CurrentFY);
+        int yr = month >= 4 ? fyStart : fyStart + 1;
+        _sdCurEntry = SalarySvc.Get(_sdEmpId, AppState.CurrentFY, month);
+        MonthlySalaryEntry e;
+        var seedEmp = _employees.FirstOrDefault(x => x.Id == _sdEmpId);
+        var seedSs  = seedEmp?.Salary;
+        if (_sdCurEntry != null)
+        {
+            // Saved entry is authoritative — use as-is (written by user save or Monthly Run sync)
+            e = _sdCurEntry;
+        }
+        else
+        {
+            // No saved entry — seed from employee's salary structure
+            e = new MonthlySalaryEntry
+            {
+                Basic            = seedSs?.Basic             ?? 0,
+                HRA              = seedSs?.Hra               ?? 0,
+                DaAmount         = seedSs?.Da                ?? 0,
+                SpecialAllowance = seedSs?.SpecialAllowance  ?? 0,
+                MedicalAllowance = seedSs?.MedicalAllowance  ?? 0,
+                Lta              = seedSs?.Lta               ?? 0,
+                OtherAllowances  = seedSs?.OtherAllowance    ?? 0,
+                PfEmployee       = seedSs != null && (seedSs.PfFixedAmount > 0 || seedSs.PfApplicable)
+                                   ? (seedSs.PfFixedAmount > 0 ? seedSs.PfFixedAmount : Math.Round(seedSs.Basic * 0.12))
+                                   : 0,
+                EsiEmployee      = seedSs != null && seedSs.EsiApplicable && seedSs.GrossSalary <= 21000
+                                   ? Math.Round(seedSs.GrossSalary * 0.0075)
+                                   : 0,
+                ProfessionalTax  = seedSs != null
+                                   ? PayrollService.GetPtPublic(seedSs.PtState, seedSs.GrossSalary)
+                                   : 0,
+            };
+        }
+        // populate fields
+        _sdBasic = e.Basic; _sdGradePay = e.GradePay; _sdHra = e.HRA; _sdDaAmt = e.DaAmount;
+        _sdSpecial = e.SpecialAllowance; _sdMedical = e.MedicalAllowance; _sdLta = e.Lta;
+        _sdBonus = e.Bonus; _sdCommission = e.Commission; _sdAdvance = e.AdvanceSalary;
+        _sdArrears = e.Arrears; _sdOther = e.OtherAllowances; _sdNpsEmployer = e.NpsEmployer;
+        _sdPerqTotal = e.PerqTotal; _sdPerqExempted = e.PerqExempted;
+        _sdLeaveEnc = e.LeaveEncTotal; _sdLeaveEncEx = e.LeaveEncExempted;
+        _sdPf = e.PfEmployee; _sdVpf = e.VPF; _sdPt = e.ProfessionalTax;
+        _sdEsi = e.EsiEmployee; _sdTds = e.TdsDeducted;
+        _sdVarEarnRows = new();
+        _sdVarDedRows  = new();
+    }
+
+    MonthlySalaryEntry BuildSdEntry()
+    {
+        int fyStart = TaxRules.FyStartYear(AppState.CurrentFY);
+        int yr = _sdMonth >= 4 ? fyStart : fyStart + 1;
+        var emp = _employees.FirstOrDefault(e => e.Id == _sdEmpId) ?? new Employee();
+        return new MonthlySalaryEntry
+        {
+            Id = _sdCurEntry?.Id ?? 0,
+            EmployeeId = _sdEmpId, DeductorId = AppState.CurrentDeductorId, EmployeeName = emp.Name, Pan = emp.Pan,
+            Month = _sdMonth, Year = yr, FinancialYear = AppState.CurrentFY,
+            Basic = _sdBasic, GradePay = _sdGradePay, HRA = _sdHra, DaAmount = _sdDaAmt,
+            SpecialAllowance = _sdSpecial, MedicalAllowance = _sdMedical, Lta = _sdLta,
+            Bonus = _sdBonus, Commission = _sdCommission, AdvanceSalary = _sdAdvance,
+            Arrears = _sdArrears, OtherAllowances = _sdOther, NpsEmployer = _sdNpsEmployer,
+            PerqTotal = _sdPerqTotal, PerqExempted = _sdPerqExempted,
+            LeaveEncTotal = _sdLeaveEnc, LeaveEncExempted = _sdLeaveEncEx,
+            PfEmployee = _sdPf, VPF = _sdVpf, ProfessionalTax = _sdPt,
+            EsiEmployee = _sdEsi, TdsDeducted = _sdTds, TaxComputed = _sdTds,
+        };
+    }
+
+    async Task SdCompute()
+    {
+        if (_sdEmpId == 0) { Snackbar.Add("Select an employee first.", Severity.Warning); return; }
+        if (_sdMonth == 0) { Snackbar.Add("Select a month first.", Severity.Warning); return; }
+        _sdComputing = true;
+        StateHasChanged();
+        try
+        {
+            var entry = BuildSdEntry();
+            var emp   = _employees.FirstOrDefault(e => e.Id == _sdEmpId) ?? new Employee();
+            var decl  = PayrollSvc.GetDeclaration(_sdEmpId, AppState.CurrentFY)
+                        ?? new TaxDeclaration { EmployeeId = _sdEmpId, FinancialYear = AppState.CurrentFY };
+            _sdAnnual = await Task.Run(() => SalarySvc.ComputeMonth(entry, emp, AppState.CurrentFY, decl));
+            _sdTds    = _sdAnnual.ThisMonthTds;
+        }
+        catch (Exception ex) { Snackbar.Add("Compute error: " + ex.Message, Severity.Error); }
+        _sdComputing = false;
+        StateHasChanged();
+    }
+
+    void SdSaveMonth()
+    {
+        if (_sdEmpId == 0) { Snackbar.Add("Select an employee first.", Severity.Warning); return; }
+        if (_sdMonth == 0) { Snackbar.Add("Select a month first.", Severity.Warning); return; }
+        try
+        {
+            var entry = BuildSdEntry();
+            entry.RecalcGross();
+            SalarySvc.Save(entry);
+            _sdCurEntry = entry;
+            RefreshSdMonthStrip();
+            StateHasChanged();
+            Snackbar.Add($"Saved {new DateTime(1, _sdMonth, 1):MMMM} salary for {entry.EmployeeName}.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Save error: " + ex.Message, Severity.Error); }
+    }
+
+    async Task SdCopyToAll()
+    {
+        if (_sdEmpId == 0) { Snackbar.Add("Select an employee first.", Severity.Warning); return; }
+        var confirmed = await DialogSvc.ShowMessageBox(
+            "Copy to All Months?",
+            $"Copy {new DateTime(1, _sdMonth, 1):MMMM} salary to all 12 months and compute TDS for each? Existing entries will be overwritten.",
+            yesText: "Yes, Copy All", cancelText: "Cancel");
+        if (confirmed != true) return;
+
+        _sdComputing = true;
+        try
+        {
+            var base_ = BuildSdEntry();
+            var emp   = _employees.FirstOrDefault(e => e.Id == _sdEmpId) ?? new Employee();
+            var decl  = PayrollSvc.GetDeclaration(_sdEmpId, AppState.CurrentFY)
+                        ?? new TaxDeclaration { EmployeeId = _sdEmpId, FinancialYear = AppState.CurrentFY };
+            int fyStart = TaxRules.FyStartYear(AppState.CurrentFY);
+            int saved = 0;
+
+            await Task.Run(() =>
+            {
+                foreach (int m in _fyMonths)
+                {
+                    int yr = m >= 4 ? fyStart : fyStart + 1;
+                    var copy = new MonthlySalaryEntry
+                    {
+                        Id = 0, EmployeeId = base_.EmployeeId, EmployeeName = base_.EmployeeName,
+                        Pan = base_.Pan, Month = m, Year = yr, FinancialYear = base_.FinancialYear,
+                        Basic = base_.Basic, GradePay = base_.GradePay, HRA = base_.HRA, DaAmount = base_.DaAmount,
+                        SpecialAllowance = base_.SpecialAllowance, MedicalAllowance = base_.MedicalAllowance, Lta = base_.Lta,
+                        Bonus = base_.Bonus, Commission = base_.Commission, AdvanceSalary = base_.AdvanceSalary,
+                        Arrears = base_.Arrears, OtherAllowances = base_.OtherAllowances, NpsEmployer = base_.NpsEmployer,
+                        PerqTotal = base_.PerqTotal, PerqExempted = base_.PerqExempted,
+                        LeaveEncTotal = base_.LeaveEncTotal, LeaveEncExempted = base_.LeaveEncExempted,
+                        PfEmployee = base_.PfEmployee, VPF = base_.VPF, ProfessionalTax = base_.ProfessionalTax,
+                        EsiEmployee = base_.EsiEmployee,
+                    };
+                    try
+                    {
+                        var annual = SalarySvc.ComputeMonth(copy, emp, AppState.CurrentFY, decl);
+                        copy.TdsDeducted = annual.ThisMonthTds;
+                        copy.TaxComputed = annual.ThisMonthTds;
+                    }
+                    catch { }
+                    copy.RecalcGross();
+                    SalarySvc.Save(copy);
+                    saved++;
+                }
+            });
+
+            RefreshSdMonthStrip();
+            SelectSdMonth(_sdMonth);
+            Snackbar.Add($"Copied and computed TDS for all {saved} months.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+        _sdComputing = false;
+    }
+
+    void SdDownloadSlip(bool html)
+    {
+        if (_sdEmpId == 0 || _sdAnnual == null) { Snackbar.Add("Compute first to generate slip.", Severity.Warning); return; }
+        try
+        {
+            var entry = BuildSdEntry();
+            entry.RecalcGross();
+            var emp = _employees.FirstOrDefault(e => e.Id == _sdEmpId) ?? new Employee();
+            var deds = DeductorSvc.GetAll();
+            var ded  = deds.FirstOrDefault(d => d.Id == AppState.CurrentDeductorId) ?? new Deductor();
+            var folder = FolderManager.SalarySlipsForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+            var path = html
+                ? SalarySlipExport.GenerateHtml(entry, _sdAnnual, emp, ded, folder)
+                : SalarySlipExport.GenerateExcel(entry, _sdAnnual, emp, ded, folder);
+            FolderManager.OpenFolder(Path.GetDirectoryName(path)!);
+            Snackbar.Add($"Saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    void SdDownloadAnnual(bool html)
+    {
+        if (_sdEmpId == 0 || _sdAnnual == null) { Snackbar.Add("Compute first to generate tax computation.", Severity.Warning); return; }
+        try
+        {
+            var emp    = _employees.FirstOrDefault(e => e.Id == _sdEmpId) ?? new Employee();
+            var ded    = DeductorSvc.GetAll().FirstOrDefault(d => d.Id == AppState.CurrentDeductorId) ?? new Deductor();
+            var folder = FolderManager.SalarySlipsForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+            var path = html
+                ? SalarySlipExport.GenerateAnnualHtml(_sdAnnual, emp, AppState.CurrentFY, folder, ded)
+                : SalarySlipExport.GenerateAnnualExcel(_sdAnnual, emp, AppState.CurrentFY, folder, ded);
+            FolderManager.OpenFolder(Path.GetDirectoryName(path)!);
+            Snackbar.Add($"Saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    // ── Static helpers ────────────────────────────────────────────────────────
+
+    static MonthlySalaryEntry BuildEntryFromRun(PayrollRun run) => new()
+    {
+        EmployeeName     = run.EmployeeName,
+        Pan              = run.Pan,
+        Month            = run.Month, Year = run.Year,
+        FinancialYear    = run.FinancialYear,
+        Basic            = run.Basic, HRA = run.Hra, DaAmount = run.Da,
+        SpecialAllowance = run.Special,
+        MedicalAllowance = run.Medical,
+        Lta              = run.Lta,
+        OtherAllowances  = run.Other,
+        PfEmployee       = run.PfEmployee,
+        ProfessionalTax  = run.ProfessionalTax,
+        TdsDeducted      = run.TdsDeducted,
+        GrossPayment     = run.GrossSalary,
+        NetSalary        = run.NetPay,
+    };
+
+    static AnnualComputation BuildAnnualFromRun(PayrollRun run)
+    {
+        var annual = new AnnualComputation
+        {
+            ChosenRegime   = run.TaxRegimeUsed ?? "New",
+            YtdTdsDeducted = run.YtdTds,
+            MonthsRemaining = 0,
+        };
+        var cr = new RegimeResult
+        {
+            RegimeName        = run.TaxRegimeUsed ?? "New",
+            GrossSalary       = run.GrossSalary * 12,
+            StandardDeduction = run.StandardDeduction,
+            HraExemption      = run.HraExemption * 12,
+            Chapter6A         = run.Chapter6ADeduction,
+            TotalIncome       = run.TaxableIncome,
+            TaxOnIncome       = run.AnnualTax,
+            TaxAfterRebate    = run.AnnualTax,
+            Surcharge         = run.Surcharge,
+            Cess              = run.Cess,
+            TotalTax          = run.TotalAnnualTax,
+        };
+        if (annual.ChosenRegime == "New") annual.NewRegime = cr;
+        else                              annual.OldRegime = cr;
+        return annual;
+    }
+}
+

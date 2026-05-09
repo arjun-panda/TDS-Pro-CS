@@ -1,0 +1,243 @@
+﻿@page "/form16"
+@using System.IO
+@inject AppStateService AppState
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject PayrollService PayrollSvc
+@inject DeductorService DeductorSvc
+
+<MudText Typo="Typo.h5" Class="mb-4">Form 16 / 16A Generation</MudText>
+
+<MudPaper Class="pa-6 mb-4" Elevation="1">
+    <MudTabs @bind-ActivePanelIndex="_activeTab">
+
+        @* ── Form 16A (Non-Salary) ── *@
+        <MudTabPanel Text="Form 16A — Non-Salary">
+            <MudGrid Class="mt-2">
+                <MudItem xs="4">
+                    <PanField Value="@_deducteePan" Label="Deductee PAN*" ShowType="true"
+                              ValueChanged="@((v) => _deducteePan = v)" />
+                </MudItem>
+                <MudItem xs="4">
+                    <MudSelect @bind-Value="_quarter16A" Label="Quarter" Variant="Variant.Outlined" ShrinkLabel="true">
+                        <MudSelectItem Value='""'>Full Year</MudSelectItem>
+                        @foreach (var q in AppConstants.QuarterCodes)
+                        { <MudSelectItem Value="@q">@q</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="4" Class="d-flex align-end gap-2 flex-wrap">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Preview16A"
+                               Disabled="_generating">Preview</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Print16A"
+                               StartIcon="@Icons.Material.Filled.Print" Disabled="_generating">Print / PDF</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="Download16A"
+                               StartIcon="@Icons.Material.Filled.Download" Disabled="_generating">Save HTML</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        @* ── Form 16 (Salary) ── *@
+        <MudTabPanel Text="Form 16 — Salary">
+            <MudGrid Class="mt-2">
+                <MudItem xs="6">
+                    <MudSelect T="int" @bind-Value="_employeeId" Label="Employee*" Variant="Variant.Outlined">
+                        <MudSelectItem Value="0">— Select Employee —</MudSelectItem>
+                        @foreach (var e in _employees)
+                        { <MudSelectItem Value="@e.Id">@e.Name (@e.Pan)</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" Class="d-flex align-end gap-2 flex-wrap">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Preview16"
+                               Disabled="_generating">Preview</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Print16"
+                               StartIcon="@Icons.Material.Filled.Print" Disabled="_generating">Print / PDF</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="Download16"
+                               StartIcon="@Icons.Material.Filled.Download" Disabled="_generating">Save HTML</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        @* ── Bulk Generation ── *@
+        <MudTabPanel Text="Bulk Generate">
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                Generate Form 16 (salary) for all active employees for FY @AppState.CurrentFY and save to the output folder.
+            </MudAlert>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.AllInbox" OnClick="BulkGenerate16"
+                       Disabled="_generating">
+                @if (_generating) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                Generate All Form 16
+            </MudButton>
+            @if (!string.IsNullOrEmpty(_bulkResult))
+            {
+                <MudAlert Severity="@_bulkSeverity" Class="mt-3" Style="white-space:pre-line">@_bulkResult</MudAlert>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FolderOpen"
+                           Class="mt-2" OnClick="OpenForm16Folder">Open Output Folder</MudButton>
+            }
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@if (_generating)
+{
+    <div class="d-flex justify-center my-6"><MudProgressCircular Indeterminate="true" /></div>
+}
+
+@if (!string.IsNullOrEmpty(_html))
+{
+    <div id="form16-preview" class="print-area">
+        @((MarkupString)_html)
+    </div>
+}
+
+<style>
+    @@media print {
+        .mud-appbar, .mud-drawer, .mud-main-content > .mud-paper { display: none !important; }
+        .print-area { margin: 0; padding: 0; }
+    }
+</style>
+
+@code {
+    private int    _activeTab    = 0;
+    private string _deducteePan = "";
+    private string _quarter16A  = "";
+    private int    _employeeId  = 0;
+    private string _html        = "";
+    private bool   _generating;
+    private string _bulkResult = "";
+    private Severity _bulkSeverity = Severity.Info;
+
+    private List<Employee> _employees = new();
+
+    protected override void OnInitialized()
+    {
+        if (AppState.CurrentDeductorId > 0)
+            _employees = PayrollSvc.GetEmployees(AppState.CurrentDeductorId);
+    }
+
+    async Task Preview16A()
+    {
+        if (AppState.CurrentDeductorId == 0) { Snackbar.Add("Select a deductor first.", Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(_deducteePan)) { Snackbar.Add("Deductee PAN is required.", Severity.Warning); return; }
+        _generating = true; _html = ""; StateHasChanged();
+        try
+        {
+            _html = await Task.Run(() =>
+            {
+                var data = Form16Generator.BuildForm16A(
+                    AppState.CurrentDeductorId, _deducteePan.Trim().ToUpper(), AppState.CurrentFY,
+                    string.IsNullOrWhiteSpace(_quarter16A) ? null : _quarter16A);
+                return Form16Generator.RenderHtml(data);
+            });
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+        _generating = false;
+    }
+
+    async Task Print16A()
+    {
+        if (string.IsNullOrEmpty(_html)) await Preview16A();
+        if (!string.IsNullOrEmpty(_html))
+            await JS.InvokeVoidAsync("tdspro.printElement", "form16-preview");
+    }
+
+    async Task Preview16()
+    {
+        if (AppState.CurrentDeductorId == 0) { Snackbar.Add("Select a deductor first.", Severity.Warning); return; }
+        if (_employeeId == 0) { Snackbar.Add("Select an employee.", Severity.Warning); return; }
+        _generating = true; _html = ""; StateHasChanged();
+        try
+        {
+            _html = await Task.Run(() =>
+            {
+                var data = Form16Generator.BuildForm16Salary(
+                    AppState.CurrentDeductorId, _employeeId, AppState.CurrentFY);
+                return Form16Generator.RenderForm16SalaryHtml(data);
+            });
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+        _generating = false;
+    }
+
+    async Task Print16()
+    {
+        if (string.IsNullOrEmpty(_html)) await Preview16();
+        if (!string.IsNullOrEmpty(_html))
+            await JS.InvokeVoidAsync("tdspro.printElement", "form16-preview");
+    }
+
+    async Task Download16A()
+    {
+        if (string.IsNullOrEmpty(_html)) await Preview16A();
+        if (string.IsNullOrEmpty(_html)) return;
+        try
+        {
+            var folder = FolderManager.Form16AForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, $"Form16A_{_deducteePan}_{_quarter16A}_{AppState.CurrentFY.Replace("/","-")}.html");
+            File.WriteAllText(path, _html, System.Text.Encoding.UTF8);
+            FolderManager.OpenFolder(folder);
+            Snackbar.Add($"Saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    async Task Download16()
+    {
+        if (string.IsNullOrEmpty(_html)) await Preview16();
+        if (string.IsNullOrEmpty(_html)) return;
+        try
+        {
+            var emp = _employees.FirstOrDefault(e => e.Id == _employeeId);
+            var folder = FolderManager.Form16ForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+            var name = emp != null ? $"Form16_{emp.EmployeeCode}_{emp.Pan}" : $"Form16_Emp{_employeeId}";
+            var path = Path.Combine(folder, $"{name}_{AppState.CurrentFY.Replace("/","-")}.html");
+            File.WriteAllText(path, _html, System.Text.Encoding.UTF8);
+            FolderManager.OpenFolder(folder);
+            Snackbar.Add($"Saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    async Task BulkGenerate16()
+    {
+        if (AppState.CurrentDeductorId == 0) { Snackbar.Add("Select a deductor first.", Severity.Warning); return; }
+        _generating = true; _bulkResult = ""; StateHasChanged();
+        try
+        {
+            var folder = FolderManager.Form16ForFyFolder(AppState.CurrentFY);
+            Directory.CreateDirectory(folder);
+            var emps = PayrollSvc.GetEmployees(AppState.CurrentDeductorId).Where(e => e.IsActive).ToList();
+            int ok = 0, fail = 0;
+            var errors = new System.Text.StringBuilder();
+
+            await Task.Run(() =>
+            {
+                foreach (var emp in emps)
+                {
+                    try
+                    {
+                        var data = Form16Generator.BuildForm16Salary(AppState.CurrentDeductorId, emp.Id, AppState.CurrentFY);
+                        var html = Form16Generator.RenderForm16SalaryHtml(data);
+                        var path = Path.Combine(folder, $"Form16_{emp.EmployeeCode}_{(emp.Pan ?? "NOPAN")}_{AppState.CurrentFY.Replace("/","-")}.html");
+                        File.WriteAllText(path, html, System.Text.Encoding.UTF8);
+                        ok++;
+                    }
+                    catch (Exception ex) { fail++; errors.AppendLine($"• {emp.Name}: {ex.Message}"); }
+                }
+            });
+
+            _bulkSeverity = fail == 0 ? Severity.Success : (ok > 0 ? Severity.Warning : Severity.Error);
+            _bulkResult = $"Generated {ok} / {emps.Count} Form 16 files → {folder}";
+            if (fail > 0) _bulkResult += $"\n\nFailed ({fail}):\n{errors}";
+        }
+        catch (Exception ex) { _bulkResult = "Error: " + ex.Message; _bulkSeverity = Severity.Error; }
+        _generating = false;
+    }
+
+    void OpenForm16Folder()
+    {
+        try { FolderManager.OpenFolder(FolderManager.Form16ForFyFolder(AppState.CurrentFY)); } catch { }
+    }
+}

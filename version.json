@@ -1,0 +1,6 @@
+{
+  "version"     : "3.0.2",
+  "releaseDate" : "2026-04-13",
+  "downloadUrl" : "https://tdspro.in/download/TDSPro_Setup_v3.0.2.exe",
+  "notes"       : "Dashboard rewritten — all KPI cards, bar chart, donut chart, sidebar fixed. All crash bugs resolved. Window starts maximized."
+}

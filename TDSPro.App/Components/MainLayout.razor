@@ -1,0 +1,361 @@
+@inherits LayoutComponentBase
+@inject AppStateService AppState
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+@using TDSPro.Common
+
+@if (!AppState.IsLoggedIn)
+{
+    @Body
+}
+else
+{
+    <MudLayout>
+        <!-- Top App Bar -->
+        <MudAppBar Elevation="1" Dense="false">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
+                           Edge="Edge.Start" OnClick="ToggleDrawer" />
+            <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight:700;letter-spacing:.5px">TDS Pro</MudText>
+            <MudText Typo="Typo.caption" Class="ml-2" Style="opacity:.7">@TaxRules.ActName(AppState.CurrentFY)</MudText>
+
+            <MudSpacer />
+
+            @if (AppState.CurrentDeductorId > 0)
+            {
+                <MudButton StartIcon="@Icons.Material.Filled.Business" Color="Color.Inherit"
+                           Variant="Variant.Outlined" Style="border-color:rgba(255,255,255,0.6);max-width:220px"
+                           OnClick="GoToDeductors">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@AppState.CurrentDeductorName</span>
+                </MudButton>
+            }
+
+            <MudSelect T="string" Value="AppState.CurrentFY" ValueChanged="OnFYChanged"
+                       Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense"
+                       Style="width:130px;color:white" Class="ml-2"
+                       AdornmentColor="Color.Inherit">
+                @foreach (var fy in AppConstants.FinancialYears)
+                {
+                    <MudSelectItem Value="@fy">FY @fy</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudText Typo="Typo.caption" Class="ml-2" Style="opacity:.8;white-space:nowrap">
+                AY @TaxRules.AssessmentYearLabel(AppState.CurrentFY)
+            </MudText>
+
+            <MudText Typo="Typo.caption" Class="ml-3" Style="opacity:.75;font-family:monospace;white-space:nowrap">
+                @_clock
+            </MudText>
+
+            <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Inherit"
+                           Class="ml-1" OnClick="ToggleHelp" title="Help & Support" />
+
+            <MudText Typo="Typo.body2" Class="ml-1 mr-1" Style="white-space:nowrap">@AppState.CurrentUser</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit"
+                           OnClick="Logout" />
+        </MudAppBar>
+
+        <!-- Side Drawer -->
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="DrawerVariant.Persistent"
+                   ClipMode="DrawerClipMode.Always">
+            <MudDrawerHeader>
+                <MudText Typo="Typo.subtitle1" Style="font-weight:600; color:#1565C0">
+                    Navigation
+                </MudText>
+            </MudDrawerHeader>
+            <MudNavMenu>
+                <MudNavLink Href="/dashboard"  Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+                <MudNavLink Href="/deductors"  Icon="@Icons.Material.Filled.Business">Deductors</MudNavLink>
+                <MudNavLink Href="/deductees"  Icon="@Icons.Material.Filled.People">Deductees</MudNavLink>
+                <MudNavLink Href="/entries"    Icon="@Icons.Material.Filled.Receipt">TDS Entries</MudNavLink>
+                <MudNavLink Href="/challans"   Icon="@Icons.Material.Filled.AccountBalance">Challans</MudNavLink>
+                <MudNavLink Href="/payroll"    Icon="@Icons.Material.Filled.Payments">Payroll</MudNavLink>
+                <MudNavLink Href="/reports"    Icon="@Icons.Material.Filled.BarChart">Reports</MudNavLink>
+                <MudNavLink Href="/returns"    Icon="@Icons.Material.Filled.FileUpload">Returns / FVU</MudNavLink>
+                <MudNavLink Href="/form16"     Icon="@Icons.Material.Filled.Description">Form 16</MudNavLink>
+                <MudNavLink Href="/rules"      Icon="@Icons.Material.Filled.Gavel">TDS Rules</MudNavLink>
+                <MudDivider Class="my-1" />
+                <MudNavLink Href="/excel"         Icon="@Icons.Material.Filled.TableChart">Excel Import/Export</MudNavLink>
+                <MudNavLink Href="/challan/print" Icon="@Icons.Material.Filled.Print">Challan 281 Print</MudNavLink>
+                <MudNavLink Href="/portals"       Icon="@Icons.Material.Filled.Language">Portal Logins</MudNavLink>
+                <MudNavLink Href="/calculator"    Icon="@Icons.Material.Filled.Calculate">Interest Calc</MudNavLink>
+                <MudNavLink Href="/audit"         Icon="@Icons.Material.Filled.History">Audit Log</MudNavLink>
+                <MudNavLink Href="/users"         Icon="@Icons.Material.Filled.ManageAccounts">Users</MudNavLink>
+                <MudNavLink Href="/settings"      Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+                <MudNavLink Href="/activate"      Icon="@Icons.Material.Filled.VpnKey">License</MudNavLink>
+            </MudNavMenu>
+        </MudDrawer>
+
+        <!-- Help Drawer -->
+        <MudDrawer @bind-Open="_helpOpen" Anchor="Anchor.End" Elevation="2" Variant="DrawerVariant.Temporary"
+                   Width="400px" ClipMode="DrawerClipMode.Never">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:#1565C0;color:white">
+                <span style="font-weight:700;font-size:16px">Help & Support</span>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Inherit" Size="Size.Small" OnClick="ToggleHelp" />
+            </div>
+            <div style="overflow-y:auto;height:calc(100vh - 64px);padding:16px 20px">
+
+                <!-- Quick Start -->
+                <div style="font-weight:700;color:#1565C0;font-size:14px;margin-bottom:8px">🚀 Quick Start</div>
+                <div style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:16px">
+                    <div>1. Add your <b>Deductor</b> (company/TAN)</div>
+                    <div>2. Add <b>Deductees</b> (vendors/employees)</div>
+                    <div>3. Enter <b>TDS Entries</b> with amounts</div>
+                    <div>4. Create <b>Challans</b> after payment</div>
+                    <div>5. Go to <b>Returns / FVU</b> → Generate FVU</div>
+                    <div>6. Validate with RPU → Upload to TRACES</div>
+                </div>
+
+                <MudDivider Class="mb-3" />
+
+                <!-- FAQ -->
+                <div style="font-weight:700;color:#1565C0;font-size:14px;margin-bottom:10px">❓ Help Topics</div>
+                <!-- Category pills -->
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+                    @foreach (var cat in _faqs.Select(f => f.Category).Distinct())
+                    {
+                        <span @onclick="() => { _faqCategory = cat; _openFaq = string.Empty; }"
+                              style="cursor:pointer;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
+                                     background:@(_faqCategory==cat?"#1565C0":"#e2e8f0");
+                                     color:@(_faqCategory==cat?"white":"#475569")">
+                            @cat
+                        </span>
+                    }
+                </div>
+                @foreach (var (cat, q, a) in _faqs.Where(f => f.Category == _faqCategory))
+                {
+                    <div style="margin-bottom:8px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+                        <div style="font-size:12px;font-weight:600;color:#1e293b;cursor:pointer;padding:8px 12px;background:@(_openFaq==q?"#eff6ff":"#f8fafc")"
+                             @onclick="() => ToggleFaq(q)">
+                            @((_openFaq == q ? "▼ " : "▶ "))@q
+                        </div>
+                        @if (_openFaq == q)
+                        {
+                            <div style="font-size:12px;color:#475569;padding:8px 12px;line-height:1.7;border-top:1px solid #e2e8f0;background:white">@a</div>
+                        }
+                    </div>
+                }
+
+                <MudDivider Class="mb-3 mt-1" />
+
+                <!-- Workflow -->
+                <div style="font-weight:700;color:#1565C0;font-size:14px;margin-bottom:8px">📋 TDS Filing Workflow</div>
+                <div style="font-size:12px;color:#334155;line-height:1.9;margin-bottom:16px">
+                    <div>✅ Enter TDS transactions in <b>TDS Entries</b></div>
+                    <div>✅ Record challan payment in <b>Challans</b></div>
+                    <div>✅ Link entries to challans</div>
+                    <div>✅ Generate FVU file from <b>Returns / FVU</b></div>
+                    <div>✅ Download CSI from IT Portal</div>
+                    <div>✅ Validate with RPU tool (Java)</div>
+                    <div>✅ Upload .fvu file to TRACES portal</div>
+                    <div>✅ Issue <b>Form 16 / 16A</b> to deductees</div>
+                </div>
+
+                <MudDivider Class="mb-3" />
+
+                <!-- Check for Updates -->
+                <MudDivider Class="mb-3" />
+                <div style="font-weight:700;color:#1565C0;font-size:14px;margin-bottom:8px">🔄 Updates</div>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;font-size:13px;color:#334155">
+                    <div style="margin-bottom:6px">Current Version: <strong>v@(AppConstants.AppVersion)</strong></div>
+                    <div style="font-size:11px;color:#64748b;margin-bottom:10px">
+                        TDS Pro is updated regularly for new Budget rules, FVU versions and feature improvements.
+                        To check for updates, contact support or send us your version info.
+                    </div>
+                    <button @onclick="CheckForUpdates"
+                            style="width:100%;background:#1565C0;color:white;border:none;border-radius:6px;padding:8px;font-size:13px;font-weight:600;cursor:pointer">
+                        📬 Request Update Check
+                    </button>
+                    @if (_updateMsg != "")
+                    {
+                        <div style="margin-top:8px;font-size:11px;color:#16a34a;font-weight:600">@_updateMsg</div>
+                    }
+                </div>
+
+                <!-- Support -->
+                <MudDivider Class="my-3" />
+                <div style="font-weight:700;color:#1565C0;font-size:14px;margin-bottom:8px">📞 Contact Support</div>
+                <div style="background:#f0f7ff;border-radius:8px;padding:14px;font-size:13px;color:#334155;line-height:2">
+                    <div>📧 <a href="mailto:admin@capitaldesk.co.in" style="color:#1565C0;font-weight:600">admin@capitaldesk.co.in</a></div>
+                    <div>🕐 Mon–Sat, 10 AM – 6 PM IST</div>
+                    <div style="margin-top:6px;font-size:11px;color:#94a3b8">Include your Machine ID and license key when contacting support.</div>
+                </div>
+
+                <div style="margin-top:16px;text-align:center;font-size:11px;color:#94a3b8">
+                    TDS Pro v@(AppConstants.AppVersion) · Developed by Arjun Panda
+                </div>
+            </div>
+        </MudDrawer>
+
+        <!-- Main Content -->
+        <MudMainContent Style="height:calc(100vh - 64px);overflow-y:auto;overflow-x:hidden;display:block">
+            <LicenseBanner />
+            <div class="page-content" style="position:relative">
+                <ErrorBoundary>
+                    <ChildContent>@Body</ChildContent>
+                    <ErrorContent Context="ex">
+                        <div style="padding:40px;text-align:center">
+                            <div style="font-size:48px">⚠️</div>
+                            <div style="font-size:20px;font-weight:700;color:#e53935;margin:12px 0 8px">Something went wrong</div>
+                            <div style="color:#64748b;margin-bottom:20px">@ex.Message</div>
+                            <a href="/dashboard" style="background:#1565C0;color:white;padding:10px 28px;border-radius:8px;text-decoration:none;font-weight:600">
+                                Go to Dashboard
+                            </a>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </div>
+            <!-- Floating Back Button -->
+            <div style="position:fixed;bottom:48px;right:24px;z-index:999">
+                <button @onclick="GoBack"
+                        style="background:#1565C0;color:white;border:none;border-radius:50px;padding:8px 18px;
+                               font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(21,101,192,.4);
+                               display:flex;align-items:center;gap:6px">
+                    ← Back
+                </button>
+            </div>
+
+            <div style="text-align:center;padding:8px 0 10px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9">
+                TDS Pro v@(AppConstants.AppVersion) &nbsp;·&nbsp; Income-tax Act 2025 &nbsp;·&nbsp; Developed by <strong>Arjun Panda</strong>
+            </div>
+        </MudMainContent>
+    </MudLayout>
+}
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _helpOpen   = false;
+    private string _clock    = "";
+    private string _openFaq  = "";
+    private string _updateMsg = "";
+    private System.Threading.Timer? _timer;
+
+    private static readonly (string Category, string Q, string A)[] _faqs =
+    [
+        // Deductor
+        ("Deductor", "How do I add a new deductor?",              "Go to Deductors → click Add. Enter company name, TAN, PAN, address and contact details. Click Save. You can manage multiple deductors (companies) from this screen."),
+        ("Deductor", "Can I manage multiple companies?",          "Yes. TDS Pro supports multiple deductors. Use the company selector in the top bar to switch between companies. Each company has its own separate data."),
+        ("Deductor", "Where do I enter TRACES credentials?",      "Go to Portals → TRACES card. Enter your TAN-based User ID and password. These are used for TRACES downloads and portal access."),
+
+        // Deductee
+        ("Deductee", "How do I add a deductee?",                  "Go to Deductees → click Add. Enter name, PAN, deductee type (Company/Individual), applicable TDS section and rate. The system auto-fills the default rate based on the section."),
+        ("Deductee", "What is a Lower Deduction Certificate (LDC)?", "If a deductee has obtained a lower TDS rate certificate from the IT Dept, enter the certificate number, rate and validity in the LDC tab of the deductee form. TDS Pro will apply the lower rate automatically."),
+        ("Deductee", "What happens if PAN is not available?",     "If PAN is not provided, TDS is deducted at 20% as per Section 206AA. TDS Pro will automatically warn you and apply the higher rate."),
+        ("Deductee", "What is Section 206AB?",                    "Section 206AB requires higher TDS (twice the normal rate or 5%, whichever is higher) for deductees who have not filed ITR for 2 consecutive years with TDS above ₹50,000. TDS Pro alerts you when this applies."),
+
+        // TDS Entries
+        ("TDS Entries", "How do I record a TDS transaction?",     "Go to TDS Entries → click Add. Select deductee, section, enter gross amount. TDS is auto-calculated based on the applicable rate. Enter the deduction date and quarter."),
+        ("TDS Entries", "How is the quarter auto-detected?",      "TDS Pro automatically sets the quarter (Q1–Q4) based on the entry date. Q1: Apr–Jun, Q2: Jul–Sep, Q3: Oct–Dec, Q4: Jan–Mar."),
+        ("TDS Entries", "How do I link an entry to a challan?",   "In the TDS Entry form, select the challan from the Challan Link dropdown. This links your payment to the transaction for FVU generation and reconciliation."),
+
+        // Challans
+        ("Challans", "How do I add a challan?",                   "Go to Challans → click Add. Enter challan number, BSR code, date, TDS amount, surcharge, cess and section. The challan represents your actual tax payment made to the bank."),
+        ("Challans", "What is a BSR Code?",                       "BSR (Basic Statistical Return) code is a 7-digit code assigned to the bank branch where TDS was deposited. It is printed on your challan receipt and required for TDS return filing."),
+        ("Challans", "How do I print Challan 281?",               "Go to Challans → select a challan → click Print. Or go to Challan 281 Print from the sidebar. This generates the official ITNS 281 format for your records."),
+
+        // Payroll
+        ("Payroll", "How does the payroll module work?",          "Go to Payroll → Employee Master to add employees with salary structure. Each month, go to Monthly Run → select month → click Compute. TDS Pro calculates salary, HRA exemption, deductions and TDS under both old and new tax regimes."),
+        ("Payroll", "How is TDS on salary calculated?",           "TDS Pro computes annual projected tax under both Old and New Regime (IT Act 2025) and recommends the beneficial regime. Monthly TDS = Annual Tax ÷ 12. It accounts for HRA, Section 80C, 80D and other deductions."),
+        ("Payroll", "What is pro-rata salary?",                   "If an employee joins or leaves mid-month, use the Days Worked column in Monthly Run to enter actual days. TDS Pro calculates salary proportionally (days worked ÷ total days × gross)."),
+        ("Payroll", "How do I push payroll data to TDS return?",  "After running monthly payroll, TDS entries for Section 192 (salary TDS) are automatically available in TDS Entries. These feed into the 24Q return for FVU generation."),
+        ("Payroll", "How do I generate salary slips?",            "Go to Payroll → Salary Data tab → select employee and month → click Export. Salary slips can be exported as Excel or printed."),
+        ("Payroll", "What is Tax Declaration?",                   "Employees declare their investments (HRA, 80C, 80D etc.) at the start of the year. Go to Payroll → Tax Declaration → select employee → enter declarations. This reduces their TDS throughout the year."),
+
+        // Returns & FVU
+        ("Returns & FVU", "How do I generate a FVU file?",        "Go to Returns / FVU → select form type (24Q for salary, 26Q for non-salary) → select quarter → enter responsible person details → click Generate FVU. Java must be installed on your system."),
+        ("Returns & FVU", "What is a NIL return?",                "If you have no TDS transactions for a quarter, you still need to file a NIL return. Go to Returns / FVU → click NIL Return. TDS Pro generates the required file automatically."),
+        ("Returns & FVU", "What is a correction return?",         "If you need to correct a previously filed return, check 'Correction Return' and enter the Previous PRN (Provisional Receipt Number) from your original filing. TDS Pro generates the correction FVU."),
+        ("Returns & FVU", "What is CSI file and where to get it?","CSI (Challan Status Inquiry) file confirms your challan payments are registered with the IT Department. Download it from eportal.incometax.gov.in → e-Pay Tax → Payment History. Required for FVU validation with RPU."),
+
+        // Form 16
+        ("Form 16", "How do I generate Form 16?",                 "Go to Form 16 → Form 16 (Salary) tab → select employee → click Preview. Review and click Print or Save HTML. For bulk generation, use the Bulk Generate tab to generate for all employees at once."),
+        ("Form 16", "What is the difference between Form 16 and Form 16A?", "Form 16 is for salary TDS (Section 192) issued to employees. Form 16A is for non-salary TDS (Sections 194C, 194I, 194J etc.) issued to vendors and contractors."),
+
+        // Reports
+        ("Reports", "What reports are available?",                "TDS Pro provides: Quarter Summary, Deductee-wise Report, Section-wise Report, Challan Reconciliation and Payroll Year Summary. Go to Reports and select the tab you need."),
+        ("Reports", "What is Challan Reconciliation?",            "This report compares your TDS entries with challans to ensure all deductions are covered by payments. Any mismatch is highlighted so you can correct before filing."),
+
+        // General
+        ("General", "How do I backup my data?",                   "Go to Settings → Backup & Restore → click Backup Now. Your database is saved with a timestamp. Always backup before filing returns or upgrading."),
+        ("General", "How do I change my password?",               "Go to Settings → General tab → Change Password section. Enter your current password, new password and confirm. Minimum 6 characters required."),
+        ("General", "What is the default login?",                 "Username: admin  |  Password: admin@123. Please change your password immediately after first login from Settings → General."),
+        ("General", "How do I add more users?",                   "Go to Users → click Add User. Assign a role (Admin or User). Admin users have full access; User role has limited access."),
+        ("General", "Where is my data stored?",                   "All data is stored locally on your computer at: C:\\Users\\[YourName]\\AppData\\Roaming\\TDSPro\\tdspro.db. No data is sent to any server — your data stays with you."),
+    ];
+
+    private string _faqCategory = "Quick Start";
+
+    void ToggleHelp() => _helpOpen = !_helpOpen;
+    void ToggleFaq(string q) => _openFaq = _openFaq == q ? "" : q;
+
+    void CheckForUpdates()
+    {
+        var mid     = TDSPro.DAL.LicenseService.GetMachineId();
+        var subject = Uri.EscapeDataString($"TDS Pro Update Check — v{AppConstants.AppVersion}");
+        var body    = Uri.EscapeDataString(
+            $"Hello,\n\nPlease check if an update is available for my TDS Pro installation.\n\n" +
+            $"Current Version : {AppConstants.AppVersion}\n" +
+            $"Machine ID      : {mid}\n" +
+            $"User            : {AppState.CurrentUser}\n" +
+            $"Date            : {DateTime.Today:dd-MMM-yyyy}\n\n" +
+            $"Regards");
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                $"mailto:admin@capitaldesk.co.in?subject={subject}&body={body}")
+                { UseShellExecute = true });
+            _updateMsg = "✅ Email drafted! Send it to receive your update.";
+        }
+        catch { _updateMsg = "Please email admin@capitaldesk.co.in for updates."; }
+    }
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnStateChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        if (!AppState.IsLoggedIn)
+            Nav.NavigateTo("/login");
+        else
+            EnforceExpiry();
+        _clock = DateTime.Now.ToString("ddd dd-MMM HH:mm");
+        _timer = new System.Threading.Timer(_ =>
+        {
+            _clock = DateTime.Now.ToString("ddd dd-MMM HH:mm");
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    void OnStateChanged() { EnforceExpiry(); StateHasChanged(); }
+
+    void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => EnforceExpiry();
+
+    void EnforceExpiry()
+    {
+        if (!AppState.IsLoggedIn) return;
+        if (!AppState.CurrentLicense.IsExpired) return;
+        var uri = Nav.ToBaseRelativePath(Nav.Uri);
+        if (uri != "activate")
+            Nav.NavigateTo("/activate", forceLoad: false);
+    }
+
+    async Task GoBack() => await JS.InvokeVoidAsync("history.back");
+
+    void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    void OnFYChanged(string fy) => AppState.SetFY(fy);
+    void GoToDeductors() => Nav.NavigateTo("/deductors");
+
+    void Logout()
+    {
+        AppState.Logout();
+        Nav.NavigateTo("/login", forceLoad: false);
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnStateChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+        _timer?.Dispose();
+    }
+}

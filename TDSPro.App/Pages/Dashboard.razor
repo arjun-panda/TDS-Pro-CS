@@ -1,0 +1,298 @@
+@page "/dashboard"
+@inject AppStateService AppState
+@inject DashboardService DashSvc
+@inject DueDateService DueSvc
+@inject ReportsService RptSvc
+@inject PayrollService PayrollSvc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+@using TDSPro.Common
+
+@* ── Welcome Banner ── *@
+<div style="background:linear-gradient(135deg,#1565C0 0%,#1976D2 60%,#42A5F5 100%);
+            border-radius:12px;padding:20px 28px;margin-bottom:24px;color:#fff;
+            display:flex;align-items:center;justify-content:space-between;">
+    <div>
+        <div style="font-size:20px;font-weight:700;">Welcome, @AppState.CurrentUser</div>
+        <div style="font-size:13px;opacity:.85;margin-top:4px;">
+            @AppState.CurrentDeductorName &nbsp;·&nbsp; FY @AppState.CurrentFY &nbsp;·&nbsp; AY @TaxRules.AssessmentYearLabel(AppState.CurrentFY)
+        </div>
+        <div style="font-size:11px;opacity:.7;margin-top:2px;">@TaxRules.ActName(AppState.CurrentFY)</div>
+    </div>
+    <div style="text-align:right">
+        <MudChip T="string" Icon="@Icons.Material.Filled.Verified" Color="Color.Success"
+                 Style="background:rgba(255,255,255,.15);color:#fff">
+            @AppState.CurrentLicense.TierLabel &nbsp; @AppState.CurrentLicense.DaysLeft d left
+        </MudChip>
+    </div>
+</div>
+
+@if (_stats == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+else
+{
+    @* ── KPI Row 1: TDS ── *@
+    <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">TDS Summary — FY @AppState.CurrentFY</MudText>
+    <MudGrid Spacing="2" Class="mb-4">
+        <MudItem xs="6" sm="4" md="2">
+            <KpiCard Title="Total Entries" Value="@_stats.TotalEntries.ToString()" Icon="@Icons.Material.Filled.Receipt" Color="Color.Primary" OnClick='() => Nav.NavigateTo("/entries")' />
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <KpiCard Title="Gross Amount" Value='@($"₹{_stats.TotalAmount:N0}")' Icon="@Icons.Material.Filled.CurrencyRupee" Color="Color.Info" OnClick='() => Nav.NavigateTo("/entries")' />
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <KpiCard Title="Total TDS" Value='@($"₹{_stats.TotalTds:N0}")' Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Success" OnClick='() => Nav.NavigateTo("/entries")' />
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <KpiCard Title="Challans" Value="@_stats.TotalChallans.ToString()" Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Warning" OnClick='() => Nav.NavigateTo("/challans")' />
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <KpiCard Title="Pending" Value="@_stats.PendingEntries.ToString()" Icon="@Icons.Material.Filled.HourglassEmpty" Color="Color.Error" OnClick='() => Nav.NavigateTo("/entries")' />
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <KpiCard Title="Deductees" Value="@_stats.TotalDeductees.ToString()" Icon="@Icons.Material.Filled.People" Color="Color.Secondary" OnClick='() => Nav.NavigateTo("/deductees")' />
+        </MudItem>
+    </MudGrid>
+
+    @* ── KPI Row 2: Payroll ── *@
+    @if (_payrollStats != null)
+    {
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">Payroll — @_payrollMonthLabel</MudText>
+        <MudGrid Spacing="2" Class="mb-4">
+            <MudItem xs="6" sm="3">
+                <KpiCard Title="Processed" Value="@_payrollStats.Processed.ToString()" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" OnClick='() => Nav.NavigateTo("/payroll")' />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <KpiCard Title="Total Gross" Value='@($"₹{_payrollStats.TotalGross:N0}")' Icon="@Icons.Material.Filled.Payments" Color="Color.Primary" OnClick='() => Nav.NavigateTo("/payroll")' />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <KpiCard Title="Month TDS" Value='@($"₹{_payrollStats.MonthTds:N0}")' Icon="@Icons.Material.Filled.Calculate" Color="Color.Error" OnClick='() => Nav.NavigateTo("/payroll")' />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <KpiCard Title="YTD TDS" Value='@($"₹{_payrollStats.YtdTds:N0}")' Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Info" OnClick='() => Nav.NavigateTo("/payroll")' />
+            </MudItem>
+        </MudGrid>
+    }
+
+    @* ── Quick Actions ── *@
+    <MudPaper Class="pa-3 mb-4 d-flex gap-2 flex-wrap" Elevation="1" Style="border-radius:10px">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.FileUpload" OnClick='()=>Nav.NavigateTo("/returns")'>
+            File Return
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.TableChart" OnClick='()=>Nav.NavigateTo("/excel")'>
+            Import Excel
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Calculate" OnClick='()=>Nav.NavigateTo("/calculator")'>
+            Interest Calc
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Description" OnClick='()=>Nav.NavigateTo("/form16")'>
+            Form 16
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.FolderOpen" OnClick="OpenFolder">
+            Open Folder
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Print" OnClick='()=>Nav.NavigateTo("/challan/print")'>
+            Challan Print
+        </MudButton>
+    </MudPaper>
+
+    @* ── Middle Row: Charts + Recent Entries ── *@
+    <MudGrid Spacing="3" Class="mb-4">
+        @* Bar Chart — Quarterly TDS *@
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius:10px;height:260px">
+                <MudText Typo="Typo.subtitle2" Class="mb-3">Quarterly TDS (₹)</MudText>
+                @if (_quarterData.Any())
+                {
+                    <div style="display:flex;align-items:flex-end;gap:16px;height:180px;padding-bottom:20px">
+                        @{ double maxTds = _quarterData.Max(q => q.TdsAmount) == 0 ? 1 : _quarterData.Max(q => q.TdsAmount); }
+                        @foreach (var q in _quarterData)
+                        {
+                            double pct = q.TdsAmount / maxTds * 100;
+                            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+                                <div style="font-size:10px;color:#555">₹@((q.TdsAmount/1000).ToString("N0"))K</div>
+                                <div style="width:100%;background:#1976D2;border-radius:4px 4px 0 0;
+                                            height:@(pct.ToString("F0"))%;min-height:4px;transition:height .3s"></div>
+                                <div style="font-size:11px;font-weight:600;color:#333">@q.Quarter</div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary" Typo="Typo.caption">No data for @AppState.CurrentFY</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @* Donut — Filing Status *@
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius:10px;height:260px">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Filing Status</MudText>
+                @{
+                    int tot  = _stats.TotalEntries > 0 ? _stats.TotalEntries : 1;
+                    int paid = tot - _stats.PendingEntries;
+                    int pend = _stats.PendingEntries;
+                    double paidPct = (double)paid / tot * 100;
+                }
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+                    <div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px"><span>Paid</span><b style="color:#4CAF50">@paid</b></div>
+                        <div style="background:#e0e0e0;border-radius:4px;height:12px;margin-top:3px">
+                            <div style="background:#4CAF50;width:@(paidPct.ToString("F0"))%;height:12px;border-radius:4px;transition:width .3s"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px"><span>Pending</span><b style="color:#FF9800">@pend</b></div>
+                        <div style="background:#e0e0e0;border-radius:4px;height:12px;margin-top:3px">
+                            <div style="background:#FF9800;width:@(((double)pend/tot*100).ToString("F0"))%;height:12px;border-radius:4px;transition:width .3s"></div>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:20px;text-align:center;font-size:28px;font-weight:700;color:#1565C0">
+                    @paidPct.ToString("F0")%
+                    <div style="font-size:11px;color:#888;font-weight:400">Compliance Rate</div>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        @* Recent TDS Entries *@
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius:10px;height:260px;overflow:hidden">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Recent TDS Entries</MudText>
+                <div style="overflow-y:auto;max-height:200px">
+                    <MudSimpleTable Dense="true" Hover="true" Style="font-size:11px">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Sec</th>
+                                <th style="text-align:right">TDS</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _recentEntries)
+                            {
+                                <tr>
+                                    <td>@e.EntryDate.ToString("dd-MMM")</td>
+                                    <td>@e.Section</td>
+                                    <td style="text-align:right">@e.TotalTds.ToString("N0")</td>
+                                    <td>
+                                        <MudChip T="string" Size="Size.Small"
+                                                 Color="@(e.Status=="Paid"?Color.Success:e.Status=="Overdue"?Color.Error:Color.Warning)"
+                                                 Style="height:18px;font-size:9px">@e.Status</MudChip>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ── Due Date Alerts ── *@
+    @if (_alerts.Any())
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="1" Style="border-radius:10px">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Alarm" Class="mr-1" Color="Color.Warning" />
+                Filing Due Date Alerts
+            </MudText>
+            @foreach (var a in _alerts)
+            {
+                <div class="d-flex align-center gap-2 mb-1">
+                    <MudAlert Severity="@(a.IsOverdue ? Severity.Error : Severity.Warning)"
+                              Dense="true" Style="flex:1;margin:0">
+                        <b>@a.FormType</b> @a.Quarter FY @a.Fy — Due: @a.DueDateValue.ToString("dd-MMM-yyyy") — @a.DaysLabel
+                    </MudAlert>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled"
+                               Color="@(a.IsOverdue ? Color.Error : Color.Warning)"
+                               OnClick='() => Nav.NavigateTo("/returns")'>File Now</MudButton>
+                </div>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private DashboardStats? _stats;
+    private List<DueDate> _alerts = new();
+    private List<QuarterSummary> _quarterData = new();
+    private List<TdsEntry> _recentEntries = new();
+    private PayrollDashStats? _payrollStats;
+    private string _payrollMonthLabel = "";
+
+    record PayrollDashStats(int Processed, double TotalGross, double MonthTds, double YtdTds);
+
+    protected override void OnInitialized() => AppState.OnChange += OnContextChanged;
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    void OnContextChanged() { _ = LoadAsync(); InvokeAsync(StateHasChanged); }
+
+    async Task LoadAsync()
+    {
+        _stats = await Task.Run(() => DashSvc.GetStats(AppState.CurrentFY));
+
+        // Quarter chart data
+        try { _quarterData = await Task.Run(() => RptSvc.GetQuarterSummary(AppState.CurrentFY)); }
+        catch { _quarterData = new(); }
+
+        // Recent 10 entries
+        try
+        {
+            var svc = new TdsEntryService();
+            _recentEntries = await Task.Run(() =>
+                svc.GetAll(AppState.CurrentDeductorId, AppState.CurrentFY)
+                   .OrderByDescending(e => e.EntryDate).Take(10).ToList());
+        }
+        catch { _recentEntries = new(); }
+
+        // Payroll stats for current month
+        try
+        {
+            var now = DateTime.Today;
+            _payrollMonthLabel = now.ToString("MMMM yyyy");
+            var runs = await Task.Run(() =>
+                PayrollSvc.GetRuns(now.Month, now.Year, AppState.CurrentDeductorId));
+            if (runs.Any())
+            {
+                var allRuns = await Task.Run(() =>
+                    PayrollSvc.GetRunsForFY(AppState.CurrentFY, AppState.CurrentDeductorId));
+                _payrollStats = new PayrollDashStats(
+                    Processed: runs.Count,
+                    TotalGross: runs.Sum(r => r.GrossSalary),
+                    MonthTds: runs.Sum(r => r.TdsDeducted),
+                    YtdTds: allRuns.Sum(r => r.TdsDeducted));
+            }
+        }
+        catch { _payrollStats = null; }
+
+        // Due date alerts
+        try
+        {
+            _alerts = await Task.Run(() =>
+                DueSvc.GetAlerts(lookAheadDays: 30)
+                      .Where(a => a.IsOverdue || a.IsDueSoon).ToList());
+        }
+        catch { _alerts = new(); }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OpenFolder()
+    {
+        try { FolderManager.OpenFolder(FolderManager.CompanyFolder); } catch { }
+    }
+
+    public void Dispose() => AppState.OnChange -= OnContextChanged;
+}

@@ -1,0 +1,822 @@
+@page "/settings"
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@using System.IO
+@using System.IO.Compression
+
+<MudText Typo="Typo.h5" Class="mb-4">Settings</MudText>
+
+<MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+
+    @* ── GENERAL ── *@
+    <MudTabPanel Text="General" Icon="@Icons.Material.Filled.Settings">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">General Settings</MudText>
+
+        <MudGrid>
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2">Application Data Folder</MudText>
+                <MudText Color="Color.Secondary" Class="mb-2">@AppState.AppDataPath</MudText>
+            </MudItem>
+
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_basePath" Label="TDS Data Base Folder"
+                              Variant="Variant.Outlined"
+                              HelperText="FVU files, returns, and reports are stored here" />
+            </MudItem>
+            <MudItem xs="6" Class="d-flex align-end">
+                <MudButton Variant="Variant.Outlined" OnClick="SaveBasePath">Apply Path</MudButton>
+                <MudButton Class="ml-2" Variant="Variant.Text" OnClick="OpenBaseFolder">Open Folder</MudButton>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2">Current Company Folder</MudText>
+                @{
+                    var compFolder = TDSPro.DAL.FolderManager.CompanyFolder;
+                    var hasCompany = !string.IsNullOrEmpty(compFolder) && compFolder != TDSPro.DAL.FolderManager.BasePath;
+                }
+                @if (hasCompany)
+                {
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <MudText Color="Color.Secondary" Style="font-size:12px;word-break:break-all">@compFolder</MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Text"
+                                   OnClick='() => { try { TDSPro.DAL.FolderManager.OpenFolder(compFolder); } catch { } }'>
+                            Open
+                        </MudButton>
+                    </div>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary" Style="font-size:12px">No company selected — select a deductor first.</MudText>
+                }
+            </MudItem>
+
+            <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Change Password</MudText>
+            </MudItem>
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_oldPassword" Label="Current Password"
+                              InputType="InputType.Password" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_newPassword" Label="New Password"
+                              InputType="InputType.Password" Variant="Variant.Outlined"
+                              HelperText="@PwdStrengthLabel(_newPassword)" />
+                @{ var sc = PwdStrengthScore(_newPassword); }
+                @if (_newPassword.Length > 0)
+                {
+                    <div style="height:4px;border-radius:2px;margin-top:4px;background:@(sc==1?"#ef4444":sc==2?"#f59e0b":sc==3?"#22c55e":"#94a3b8");width:@(sc*25)%;transition:width .3s"></div>
+                }
+            </MudItem>
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_confirmPassword" Label="Confirm Password"
+                              InputType="InputType.Password" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ChangePassword">
+                    Change Password
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+
+    @* ── FVU / PORTALS ── *@
+    <MudTabPanel Text="FVU & Portals" Icon="@Icons.Material.Filled.Link">
+
+        @* ── Java Status Card ── *@
+        <div style="border:1px solid @(_javaOk?"#a5d6a7":"#ffcc80");border-radius:8px;padding:12px 16px;margin-bottom:16px;
+                    background:@(_javaOk?"#f1f8e9":"#fff8e1")">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                <span style="font-size:18px">@(_javaOk ? "✅" : "⚠️")</span>
+                <span style="font-weight:700;font-size:14px;color:@(_javaOk?"#2e7d32":"#e65100")">
+                    Java — @(_javaOk ? "Detected" : "Not Configured")
+                </span>
+                @if (_javaOk)
+                {
+                    <span style="font-size:11px;color:#555;background:#e8f5e9;padding:2px 8px;border-radius:10px">@_javaVersion</span>
+                }
+            </div>
+            <MudGrid Spacing="2">
+                <MudItem xs="8">
+                    <MudTextField @bind-Value="_javaPath" Label="Java Executable Path"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Placeholder="C:\Program Files\Java\jre\bin\java.exe"
+                                  HelperText="Auto-detected from system. Override only if needed." />
+                </MudItem>
+                <MudItem xs="2" Class="d-flex align-center gap-1">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="AutoDetectJava"
+                               StartIcon="@Icons.Material.Filled.Search">Detect</MudButton>
+                </MudItem>
+                <MudItem xs="2" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="SaveJavaPath">Save</MudButton>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        @* ── FVU Jar Status Card ── *@
+        <div style="border:1px solid @(_fvuOk?"#a5d6a7":"#ffcc80");border-radius:8px;padding:12px 16px;margin-bottom:16px;
+                    background:@(_fvuOk?"#f1f8e9":"#fff8e1")">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                <span style="font-size:18px">@(_fvuOk ? "✅" : "⚠️")</span>
+                <span style="font-weight:700;font-size:14px;color:@(_fvuOk?"#2e7d32":"#e65100")">
+                    FVU Jar — @(_fvuOk ? $"Found: {Path.GetFileName(_fvuPath)}" : "Not Found")
+                </span>
+                @if (_fvuOk)
+                {
+                    <span style="font-size:11px;color:#555;margin-left:4px">@_fvuPath</span>
+                }
+            </div>
+
+            @if (!_fvuOk)
+            {
+                @* ── One-click download & watch ── *@
+                <div style="background:#e3f2fd;border-radius:6px;padding:10px 14px;margin-bottom:10px">
+                    <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:6px">
+                        ⚡ Auto-Install FVU
+                    </div>
+                    <div style="font-size:11px;color:#555;margin-bottom:8px;line-height:1.6">
+                        Downloads the official FVU 9.4 from Protean, extracts and installs automatically.
+                        Requires internet. If download fails, it falls back to any zip you've already downloaded.
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Download"
+                                   OnClick="InstallFvuFromDownloads" Disabled="_fvuInstalling">
+                            @if (_fvuInstalling)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                                <span>Installing FVU...</span>
+                            }
+                            else
+                            {
+                                <span>Download & Install FVU 9.4</span>
+                            }
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.OpenInBrowser"
+                                   OnClick="OpenFvuDownloadPage">
+                            Protean Download Page
+                        </MudButton>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_fvuInstallMsg))
+                    {
+                        <MudAlert Severity="@_fvuInstallSeverity" Dense="true" Class="mt-2">@_fvuInstallMsg</MudAlert>
+                    }
+                </div>
+                <div style="font-size:11px;color:#777;margin-bottom:8px">
+                    — or manually paste the path to an already-downloaded jar below —
+                </div>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="8">
+                    <MudTextField @bind-Value="_fvuPath" Label="NSDL FVU Utility Path (.jar)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Placeholder="C:\Program Files\TDS Pro\FVU\TDS_STANDALONE_FVU_9.4.jar"
+                                  HelperText="Full path to the main FVU jar (not VersionValidator.jar)" />
+                </MudItem>
+                <MudItem xs="2" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="AutoDetectFvu"
+                               StartIcon="@Icons.Material.Filled.Search">Detect</MudButton>
+                </MudItem>
+                <MudItem xs="2" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="SaveFvuPath">Save</MudButton>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        @* ── Overall readiness ── *@
+        @if (_javaOk && _fvuOk)
+        {
+            <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                ✅ FVU is fully configured. You can generate and validate returns from the Returns / FVU page.
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                Complete the above setup to enable FVU validation. The .txt file can still be generated without Java/FVU.
+            </MudAlert>
+        }
+
+    </MudTabPanel>
+
+    @* ── BACKUP ── *@
+    <MudTabPanel Text="Backup & Restore" Icon="@Icons.Material.Filled.Backup">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">Backup & Restore</MudText>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudText Color="Color.Secondary" Class="mb-2">
+                    Database location: <b>@_dbPath</b>
+                </MudText>
+                <MudText Color="Color.Secondary" Class="mb-3">
+                    Backup folder: <b>@FolderManager.BackupFolder</b>
+                </MudText>
+            </MudItem>
+            <MudItem xs="6">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Backup"
+                           OnClick="BackupNow">
+                    Backup Now
+                </MudButton>
+                <MudButton Class="ml-2" Variant="Variant.Text" OnClick="OpenBackupFolder">
+                    Open Backup Folder
+                </MudButton>
+            </MudItem>
+
+            <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Recent Backups</MudText>
+            </MudItem>
+
+            @foreach (var f in _backupFiles)
+            {
+                var file = f;
+                <MudItem xs="12">
+                    <div class="d-flex align-center gap-3">
+                        <MudIcon Icon="@Icons.Material.Filled.FolderZip" Size="Size.Small" />
+                        <MudText Style="flex:1">@Path.GetFileName(file)</MudText>
+                        <MudText Color="Color.Secondary" Typo="Typo.caption">
+                            @(new FileInfo(file).LastWriteTime.ToString("dd-MMM-yyyy HH:mm"))
+                        </MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Filled.RestorePage"
+                                   OnClick="() => ConfirmRestore(file)">Restore</MudButton>
+                    </div>
+                </MudItem>
+            }
+            @if (_backupFiles.Count == 0)
+            {
+                <MudItem xs="12">
+                    <MudText Color="Color.Secondary">No backups found.</MudText>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudTabPanel>
+
+    @* ── DUE DATES ── *@
+    <MudTabPanel Text="Due Dates" Icon="@Icons.Material.Filled.DateRange">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">Due Date Reminders</MudText>
+        <MudGrid>
+            <MudItem xs="4">
+                <MudNumericField @bind-Value="_dueSoonDays" Label="Alert Days Before Due"
+                                 Variant="Variant.Outlined" HideSpinButtons="true"
+                                 HelperText="Show warning this many days before deadline" />
+            </MudItem>
+            <MudItem xs="4" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDueSoonDays">
+                    Save
+                </MudButton>
+            </MudItem>
+
+            <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Quarter Filing Status</MudText>
+            </MudItem>
+            @foreach (var q in _quarters)
+            {
+                <MudItem xs="6">
+                    <MudCheckBox T="bool" Value="@IsQuarterFiled(q)"
+                                 ValueChanged="@((v) => SetQuarterFiled(q, v))"
+                                 Label="@($"Q{q} ({QuarterLabel(q)}) filed")" />
+                </MudItem>
+            }
+        </MudGrid>
+    </MudTabPanel>
+
+    @* ── ABOUT ── *@
+    <MudTabPanel Text="About" Icon="@Icons.Material.Filled.Info">
+        <div class="d-flex flex-column align-center pa-6">
+            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Primary"
+                     Style="font-size:64px" Class="mb-3" />
+            <MudText Typo="Typo.h4" Style="font-weight:700;color:#1565C0">TDS Pro</MudText>
+            <MudText Typo="Typo.subtitle1" Color="Color.Secondary" Class="mb-4">
+                TDS Compliance Software — Income-tax Act 2025
+            </MudText>
+            <MudDivider Style="width:200px" Class="mb-4" />
+            <MudText><b>Version:</b> @AppConstants.AppVersion</MudText>
+            <MudText><b>Framework:</b> .NET 8 · Blazor · MudBlazor</MudText>
+            <MudText><b>Database:</b> SQLite (WAL mode)</MudText>
+            <MudText Class="mt-2"><b>License:</b> @AppState.CurrentLicense.TierLabel</MudText>
+            <MudText><b>Key:</b> @(string.IsNullOrEmpty(AppState.CurrentLicense.Key) ? "Trial" : AppState.CurrentLicense.Key[..Math.Min(8, AppState.CurrentLicense.Key.Length)] + "...")</MudText>
+            <MudText><b>Expires:</b> @AppState.CurrentLicense.ExpiryDate.ToString("dd-MMM-yyyy") (@AppState.CurrentLicense.DaysLeft days left)</MudText>
+            <MudText Class="mt-3"><b>Developed by:</b> Arjun Panda</MudText>
+            <MudText><b>Support:</b> <a href="mailto:admin@capitaldesk.co.in" style="color:#1565C0">admin@capitaldesk.co.in</a></MudText>
+            <MudText Class="mt-4" Typo="Typo.caption" Color="Color.Secondary">
+                © @DateTime.Today.Year TDS Pro. All rights reserved.
+            </MudText>
+        </div>
+    </MudTabPanel>
+
+</MudTabs>
+
+@* ── Restore Confirmation Dialog ── *@
+<MudDialog @bind-Visible="_restoreConfirmOpen" Options='new DialogOptions { MaxWidth=MaxWidth.Small, FullWidth=true }'>
+    <TitleContent>Confirm Restore</TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Dense="true">
+            This will overwrite the current database with the selected backup.
+            A safety copy of the current database will be created automatically.
+            The app should be restarted after restore.
+        </MudAlert>
+        <MudText Class="mt-3"><b>Restore from:</b> @Path.GetFileName(_restorePath)</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _restoreConfirmOpen = false">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="DoRestore">Restore</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // General
+    private string _basePath       = "";
+    private string _oldPassword    = "";
+    private string _newPassword    = "";
+    private string _confirmPassword = "";
+
+    // FVU
+    private string   _fvuPath          = "";
+    private string   _javaPath         = "";
+    private bool     _javaOk           = false;
+    private bool     _fvuInstalling    = false;
+    private string   _fvuInstallMsg    = "";
+    private Severity _fvuInstallSeverity = Severity.Info;
+    private bool   _fvuOk            = false;
+    private string _javaVersion      = "";
+    private string _tracesUserId     = "";
+    private string _tracesPassword   = "";
+    private string _itPortalUserId   = "";
+    private string _itPortalPassword = "";
+
+    // Backup
+    private string       _dbPath        = "";
+    private List<string> _backupFiles   = new();
+    private string       _restorePath   = "";
+    private bool         _restoreConfirmOpen;
+
+    // Due dates
+    private int    _dueSoonDays = 7;
+    private int[]  _quarters    = { 1, 2, 3, 4 };
+
+    protected override void OnInitialized()
+    {
+        _basePath     = FolderManager.BasePath;
+        _fvuPath      = Database.GetSetting("FvuPath", "");
+        _javaPath     = Database.GetSetting("JavaPath", "");
+        _tracesUserId     = Database.GetSetting("TracesUserId", "");
+        _itPortalUserId   = Database.GetSetting("ItPortalUserId", "");
+        _dueSoonDays  = int.TryParse(Database.GetSetting("DueSoonDays", "7"), out var d) ? d : 7;
+        _dbPath       = Path.Combine(AppState.AppDataPath, "TDSPro.db");
+        LoadBackupFiles();
+        // Auto-detect on open
+        if (string.IsNullOrEmpty(_javaPath)) AutoDetectJava();
+        else { _javaOk = File.Exists(_javaPath); _javaVersion = _javaOk ? GetJavaVersion(_javaPath) : ""; }
+        _fvuOk = !string.IsNullOrEmpty(_fvuPath) && File.Exists(_fvuPath);
+        if (!_fvuOk) AutoDetectFvu();
+    }
+
+    void LoadBackupFiles()
+    {
+        var bf = FolderManager.BackupFolder;
+        if (Directory.Exists(bf))
+            _backupFiles = Directory.GetFiles(bf, "*.db")
+                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .Take(10)
+                .ToList();
+    }
+
+    // ── General ──
+    void SaveBasePath()
+    {
+        if (string.IsNullOrWhiteSpace(_basePath)) { Snackbar.Add("Path cannot be empty.", Severity.Warning); return; }
+        try
+        {
+            Directory.CreateDirectory(_basePath);
+            // Write test to confirm path is writable
+            var testFile = Path.Combine(_basePath, ".tdspro_write_test");
+            File.WriteAllText(testFile, "ok");
+            File.Delete(testFile);
+            FolderManager.SetBasePath(_basePath);
+            Database.SetSetting("BasePath", _basePath);
+            Snackbar.Add("Base path updated. Restart may be needed.", Severity.Success);
+        }
+        catch (UnauthorizedAccessException) { Snackbar.Add("Cannot write to that path — check permissions.", Severity.Error); }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    void OpenBaseFolder()
+    {
+        try { FolderManager.OpenFolder(FolderManager.BasePath); } catch { }
+    }
+
+    static int PwdStrengthScore(string p)
+    {
+        if (string.IsNullOrEmpty(p)) return 0;
+        int s = 0;
+        if (p.Length >= 6) s++;
+        if (p.Any(char.IsUpper) && p.Any(char.IsLower)) s++;
+        if (p.Any(char.IsDigit)) s++;
+        if (p.Any(c => "!@#$%^&*()_+-=[]{}|;':\",./<>?".Contains(c))) s++;
+        return Math.Max(s, 1);
+    }
+    static string PwdStrengthLabel(string p) => PwdStrengthScore(p) switch
+    {
+        0 => "", 1 => "Weak", 2 => "Fair", 3 => "Strong", _ => "Very Strong"
+    };
+
+    void ChangePassword()
+    {
+        if (string.IsNullOrEmpty(_newPassword)) { Snackbar.Add("New password is required.", Severity.Warning); return; }
+        if (_newPassword.Length < 6)            { Snackbar.Add("Password must be at least 6 characters.", Severity.Warning); return; }
+        if (_newPassword != _confirmPassword)   { Snackbar.Add("Passwords do not match.", Severity.Error); return; }
+
+        try
+        {
+            using var conn = Database.GetConnection();
+            using var cmd  = conn.CreateCommand();
+            cmd.CommandText = "UPDATE users SET password=@np WHERE username=@u AND password=@op";
+            cmd.Parameters.AddWithValue("@u",  AppState.CurrentUser);
+            cmd.Parameters.AddWithValue("@op", Database.HashPassword(_oldPassword));
+            cmd.Parameters.AddWithValue("@np", Database.HashPassword(_newPassword));
+            var rows = cmd.ExecuteNonQuery();
+            if (rows > 0)
+            {
+                _oldPassword = _newPassword = _confirmPassword = "";
+                Snackbar.Add("Password changed.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Current password is incorrect.", Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add("Error: " + ex.Message, Severity.Error); }
+    }
+
+    // ── FVU ──
+    void SaveFvuPath()
+    {
+        Database.SetSetting("FvuPath", _fvuPath);
+        _fvuOk = !string.IsNullOrEmpty(_fvuPath) && File.Exists(_fvuPath);
+        Snackbar.Add(_fvuOk ? "FVU path saved ✅" : "FVU path saved (file not found — check path).", _fvuOk ? Severity.Success : Severity.Warning);
+    }
+
+    void SaveJavaPath()
+    {
+        Database.SetSetting("JavaPath", _javaPath);
+        _javaOk = !string.IsNullOrEmpty(_javaPath) && File.Exists(_javaPath);
+        _javaVersion = _javaOk ? GetJavaVersion(_javaPath) : "";
+        Snackbar.Add(_javaOk ? $"Java path saved ✅ ({_javaVersion})" : "Java path saved (file not found — check path).", _javaOk ? Severity.Success : Severity.Warning);
+    }
+
+    void AutoDetectJava()
+    {
+        // Search common locations in priority order
+        var candidates = new List<string>();
+
+        // 1. JAVA_HOME env
+        var javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
+        if (!string.IsNullOrEmpty(javaHome))
+            candidates.Add(Path.Combine(javaHome, "bin", "java.exe"));
+
+        // 2. Common install paths
+        var programFiles = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        };
+        foreach (var pf in programFiles)
+        {
+            if (!Directory.Exists(pf)) continue;
+            foreach (var vendor in new[] { "Microsoft", "Java", "Eclipse Adoptium", "Eclipse Foundation", "Amazon Corretto", "BellSoft" })
+            {
+                var vendorDir = Path.Combine(pf, vendor);
+                if (!Directory.Exists(vendorDir)) continue;
+                foreach (var jdkDir in Directory.GetDirectories(vendorDir).OrderByDescending(x => x))
+                    candidates.Add(Path.Combine(jdkDir, "bin", "java.exe"));
+            }
+            // Direct JDK folders like C:\Program Files\Java\jdk-17
+            var javaDir = Path.Combine(pf, "Java");
+            if (Directory.Exists(javaDir))
+                foreach (var jdkDir in Directory.GetDirectories(javaDir).OrderByDescending(x => x))
+                    candidates.Add(Path.Combine(jdkDir, "bin", "java.exe"));
+        }
+
+        // 3. PATH lookup via where.exe
+        try
+        {
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("where", "java")
+                { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true });
+            p?.WaitForExit(2000);
+            var found = p?.StandardOutput.ReadLine()?.Trim();
+            if (!string.IsNullOrEmpty(found)) candidates.Add(found);
+        }
+        catch { }
+
+        var javaExe = candidates.FirstOrDefault(File.Exists);
+        if (javaExe != null)
+        {
+            _javaPath    = javaExe;
+            _javaOk      = true;
+            _javaVersion = GetJavaVersion(javaExe);
+            Database.SetSetting("JavaPath", _javaPath);
+            Snackbar.Add($"Java auto-detected: {_javaVersion}", Severity.Success);
+        }
+        else
+        {
+            _javaOk = false;
+            Snackbar.Add("Java not found. Install Java 8+ or set path manually.", Severity.Warning);
+        }
+    }
+
+    void AutoDetectFvu()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var searchDirs = new[]
+        {
+            @"C:\Program Files\TDS Pro\FVU",
+            @"C:\Program Files (x86)\TDS Pro\FVU",
+            @"C:\TDSPro\FVU",
+            Path.Combine(profile, "Downloads"),
+            Path.Combine(profile, "OneDrive", "Downloads"),
+            Path.Combine(profile, "OneDrive - Personal", "Downloads"),
+            Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+            Path.Combine(profile, "OneDrive", "Desktop"),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            @"C:\FVU",
+            @"C:\NSDL",
+            FolderManager.BasePath,
+        };
+
+        string? found = null;
+        foreach (var dir in searchDirs)
+        {
+            if (!Directory.Exists(dir)) continue;
+            var allJars = Directory.GetFiles(dir, "*.jar", SearchOption.AllDirectories);
+            // Priority 1: TDS_STANDALONE_FVU*.jar (exact NSDL naming)
+            var jar = allJars.FirstOrDefault(f =>
+                Path.GetFileName(f).StartsWith("TDS_STANDALONE_FVU", StringComparison.OrdinalIgnoreCase));
+            // Priority 2: any jar with STANDALONE in name
+            jar ??= allJars.FirstOrDefault(f =>
+                Path.GetFileName(f).Contains("STANDALONE", StringComparison.OrdinalIgnoreCase) &&
+                Path.GetFileName(f).Contains("FVU", StringComparison.OrdinalIgnoreCase));
+            // Priority 3: any jar with FVU in name, excluding known helper jars
+            jar ??= allJars
+                .Where(f => Path.GetFileName(f).Contains("FVU", StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(f).Contains("Version", StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(f).Contains("barbecue", StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(f).Contains("log4j", StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(f).Contains("bcprov", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .FirstOrDefault();
+            if (jar != null) { found = jar; break; }
+        }
+
+        if (found != null)
+        {
+            _fvuPath = found;
+            _fvuOk   = true;
+            Database.SetSetting("FvuPath", _fvuPath);
+            Snackbar.Add($"FVU jar found: {Path.GetFileName(_fvuPath)}", Severity.Success);
+        }
+        else
+        {
+            _fvuOk = false;
+        }
+    }
+
+    void OpenFvuDownloadPage()
+    {
+        OpenUrl("https://www.protean-tinpan.com/services/etds-etcs/fvu.html");
+    }
+
+    void OpenFolder(string path)
+    {
+        try { if (Directory.Exists(path)) FolderManager.OpenFolder(path); } catch { }
+    }
+
+    // ── Fully automated: download zip from Protean → extract → install ────────
+    async Task InstallFvuFromDownloads()
+    {
+        _fvuInstalling    = true;
+        _fvuInstallMsg    = "Connecting to Protean server...";
+        _fvuInstallSeverity = Severity.Info;
+        StateHasChanged();
+
+        var (ok, msg) = await Task.Run(async () =>
+        {
+            const string fvuInstallDir = @"C:\Program Files\TDS Pro\FVU";
+            const string directUrl     = "https://tinpan.proteantech.in/downloads/e-tds/download/TDS_STANDALONE_FVU_9.4.zip";
+
+            // ── Step 1: Remove any corrupt jar (< 50 KB is suspicious) ────────
+            var existingJar = Path.Combine(fvuInstallDir, "TDS_STANDALONE_FVU_9.4.jar");
+            if (File.Exists(existingJar) && new FileInfo(existingJar).Length < 51_200)
+                File.Delete(existingJar);
+
+            // ── Step 2: Try direct download ───────────────────────────────────
+            var zipPath = Path.Combine(Path.GetTempPath(), "TDS_STANDALONE_FVU_9.4.zip");
+            try
+            {
+                using var http = new System.Net.Http.HttpClient();
+                http.Timeout = TimeSpan.FromSeconds(120);
+                http.DefaultRequestHeaders.Add("User-Agent", "TDSPro/2.0");
+
+                // Report progress via return tuple — update msg inline
+                using var response = await http.GetAsync(directUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+                if (!response.IsSuccessStatusCode)
+                    return (false, $"Download failed: HTTP {(int)response.StatusCode}. Check internet connection.");
+
+                var total = response.Content.Headers.ContentLength ?? 0;
+                using var fs = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                using var stream = await response.Content.ReadAsStreamAsync();
+                var buf = new byte[81920];
+                long downloaded = 0;
+                int read;
+                while ((read = await stream.ReadAsync(buf)) > 0)
+                {
+                    await fs.WriteAsync(buf.AsMemory(0, read));
+                    downloaded += read;
+                }
+            }
+            catch (Exception ex)
+            {
+                // ── Step 2b: Fallback — scan local drives for a previously downloaded zip ──
+                var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var scanDirs = new[]
+                {
+                    Path.Combine(profile, "Downloads"),
+                    Path.Combine(profile, "OneDrive", "Downloads"),
+                    Path.Combine(profile, "OneDrive - Personal", "Downloads"),
+                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                    Path.Combine(profile, "OneDrive", "Desktop"),
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    @"C:\FVU", @"C:\NSDL",
+                };
+                var localZip = scanDirs
+                    .Where(Directory.Exists)
+                    .SelectMany(d => Directory.GetFiles(d, "*.zip", SearchOption.TopDirectoryOnly))
+                    .Where(f => { var n = Path.GetFileNameWithoutExtension(f).ToUpperInvariant(); return n.Contains("FVU") || n.Contains("STANDALONE") || n.Contains("ETDS"); })
+                    .OrderByDescending(File.GetLastWriteTime)
+                    .FirstOrDefault();
+
+                if (localZip == null)
+                    return (false, $"Auto-download failed ({ex.Message}) and no local FVU zip found.\nPlease download manually from https://www.protean-tinpan.com and click Install again.");
+
+                zipPath = localZip;
+            }
+
+            // ── Step 3: Extract zip ────────────────────────────────────────────
+            var tempExtract = Path.Combine(Path.GetTempPath(), "TDSProFVU_" + Guid.NewGuid().ToString("N")[..6]);
+            try
+            {
+                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, tempExtract, overwriteFiles: true);
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Zip extraction failed: {ex.Message}");
+            }
+
+            // ── Step 4: Locate main jar ────────────────────────────────────────
+            var mainJar = Directory.GetFiles(tempExtract, "*.jar", SearchOption.AllDirectories)
+                .FirstOrDefault(f => { var n = Path.GetFileName(f).ToUpperInvariant(); return n.StartsWith("TDS_STANDALONE_FVU") || n.StartsWith("TDS_FVU"); });
+
+            if (mainJar == null)
+            {
+                try { Directory.Delete(tempExtract, true); } catch { }
+                return (false, "Zip extracted but no TDS_STANDALONE_FVU*.jar found inside.");
+            }
+
+            // ── Step 5: Validate jar is a real zip (jars are zip files) ───────
+            try { System.IO.Compression.ZipFile.OpenRead(mainJar).Dispose(); }
+            catch { try { Directory.Delete(tempExtract, true); } catch { } return (false, "Downloaded jar appears corrupt. Please retry."); }
+
+            // ── Step 6: Install all files ──────────────────────────────────────
+            try
+            {
+                Directory.CreateDirectory(fvuInstallDir);
+                foreach (var file in Directory.GetFiles(Path.GetDirectoryName(mainJar)!, "*.*"))
+                    File.Copy(file, Path.Combine(fvuInstallDir, Path.GetFileName(file)), overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Install to {fvuInstallDir} failed: {ex.Message}");
+            }
+            finally { try { Directory.Delete(tempExtract, true); } catch { } }
+
+            return (true, $"✅ FVU {Path.GetFileName(mainJar)} installed to {fvuInstallDir}");
+        });
+
+        if (ok)
+        {
+            _fvuInstallSeverity = Severity.Success;
+            AutoDetectFvu();
+        }
+        else
+        {
+            _fvuInstallSeverity = Severity.Warning;
+        }
+        _fvuInstallMsg = msg;
+        _fvuInstalling = false;
+    }
+
+    static string GetJavaVersion(string javaExe)
+    {
+        try
+        {
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(javaExe, "-version")
+                { RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true });
+            p?.WaitForExit(3000);
+            var line = p?.StandardError.ReadLine() ?? "";
+            // e.g. 'openjdk version "17.0.13"'
+            var m = System.Text.RegularExpressions.Regex.Match(line, "\"([^\"]+)\"");
+            return m.Success ? $"Java {m.Groups[1].Value}" : line.Split('\n')[0].Trim();
+        }
+        catch { return ""; }
+    }
+
+    void OpenUrl(string url)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    }
+
+    void SavePortalCreds()
+    {
+        Database.SetSetting("TracesUserId",   _tracesUserId);
+        Database.SetSetting("ItPortalUserId", _itPortalUserId);
+        if (!string.IsNullOrEmpty(_tracesPassword))
+            Database.SetSetting("TracesPassword",   Database.HashPassword(_tracesPassword));
+        if (!string.IsNullOrEmpty(_itPortalPassword))
+            Database.SetSetting("ItPortalPassword", Database.HashPassword(_itPortalPassword));
+        _tracesPassword = _itPortalPassword = "";
+        Snackbar.Add("Portal credentials saved.", Severity.Success);
+    }
+
+    // ── Backup ──
+    void BackupNow()
+    {
+        try
+        {
+            var bf = FolderManager.BackupFolder;
+            Directory.CreateDirectory(bf);
+            var dest = Path.Combine(bf, $"TDSPro_backup_{DateTime.Now:yyyyMMdd_HHmmss}.db");
+            File.Copy(_dbPath, dest, overwrite: false);
+            LoadBackupFiles();
+            Snackbar.Add("Backup created: " + Path.GetFileName(dest), Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Backup failed: " + ex.Message, Severity.Error); }
+    }
+
+    void OpenBackupFolder()
+    {
+        try { FolderManager.OpenFolder(FolderManager.BackupFolder); } catch { }
+    }
+
+    void ConfirmRestore(string path)
+    {
+        _restorePath = path; _restoreConfirmOpen = true;
+    }
+
+    void DoRestore()
+    {
+        _restoreConfirmOpen = false;
+        if (string.IsNullOrEmpty(_restorePath)) return;
+        try
+        {
+            if (File.Exists(_dbPath))
+            {
+                var safeguard = _dbPath + $".pre_restore_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
+                File.Copy(_dbPath, safeguard, overwrite: false);
+            }
+            File.Copy(_restorePath, _dbPath, overwrite: true);
+            Snackbar.Add($"Restored from {Path.GetFileName(_restorePath)}. Restart the app to apply.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("Restore failed: " + ex.Message, Severity.Error); }
+        finally { _restorePath = ""; }
+    }
+
+    // ── Due dates ──
+    void SaveDueSoonDays()
+    {
+        Database.SetSetting("DueSoonDays", _dueSoonDays.ToString());
+        Snackbar.Add("Reminder threshold saved.", Severity.Success);
+    }
+
+    bool IsQuarterFiled(int q)
+        => Database.GetSetting($"Q{q}_Filed_{AppState.CurrentFY}", "0") == "1";
+
+    void SetQuarterFiled(int q, bool v)
+    {
+        Database.SetSetting($"Q{q}_Filed_{AppState.CurrentFY}", v ? "1" : "0");
+        Snackbar.Add($"Q{q} marked as {(v ? "filed" : "not filed")}.", Severity.Info);
+    }
+
+    string QuarterLabel(int q) => q switch
+    {
+        1 => "Apr–Jun",
+        2 => "Jul–Sep",
+        3 => "Oct–Dec",
+        4 => "Jan–Mar",
+        _ => ""
+    };
+}

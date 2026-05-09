@@ -1,0 +1,446 @@
+﻿@page "/challans"
+@inject AppStateService AppState
+@inject ChallanService Svc
+@inject TdsEntryService EntrySvc
+@inject DeductorService DeductorSvc
+@inject ISnackbar Snackbar
+@inject IDialogService DialogSvc
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="d-flex align-center gap-3 mb-4">
+    <MudText Typo="Typo.h5">Challans — FY @AppState.CurrentFY</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenAdd">Add Challan</MudButton>
+</div>
+
+@* ── KPI Summary ── *@
+@if (_items.Count > 0)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="3">
+            <MudPaper Class="pa-3 text-center" Elevation="1" Style="border-left:4px solid #1565C0;border-radius:8px">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Challans</MudText>
+                <MudText Typo="Typo.h6"><b>@_items.Count</b></MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="3">
+            <MudPaper Class="pa-3 text-center" Elevation="1" Style="border-left:4px solid #2e7d32;border-radius:8px">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total TDS</MudText>
+                <MudText Typo="Typo.h6" Color="Color.Success"><b>₹@_items.Sum(x=>x.TdsAmount).ToString("N0")</b></MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="3">
+            <MudPaper Class="pa-3 text-center" Elevation="1" Style="border-left:4px solid #e65100;border-radius:8px">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Surcharge</MudText>
+                <MudText Typo="Typo.h6"><b>₹@_items.Sum(x=>x.Surcharge).ToString("N0")</b></MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="3">
+            <MudPaper Class="pa-3 text-center" Elevation="1" Style="border-left:4px solid #6a1b9a;border-radius:8px">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Paid (incl. Sur/Cess)</MudText>
+                <MudText Typo="Typo.h6"><b>₹@_items.Sum(x=>x.TotalAmount).ToString("N0")</b></MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+<div style="height:calc(100vh - 260px);overflow:hidden">
+<MudDataGrid T="Challan" Items="_items" Hover="true" Striped="true" Dense="true" QuickFilter="_filter"
+             FixedHeader="true" Height="calc(100vh - 260px)">
+    <ToolBarContent>
+        <MudTextField @bind-Value="_search" Placeholder="Search challan no, BSR, bank..."
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" Class="mt-0" />
+    </ToolBarContent>
+    <Columns>
+        <PropertyColumn Property="x => x.ChallanNo"   Title="Challan No" />
+        <PropertyColumn Property="x => x.ChallanDate" Title="Date" Format="dd-MMM-yyyy" />
+        <PropertyColumn Property="x => x.BsrCode"     Title="BSR Code" />
+        <PropertyColumn Property="x => x.Section"     Title="Section" />
+        <PropertyColumn Property="x => x.TdsAmount"   Title="TDS (₹)" Format="N2" />
+        <PropertyColumn Property="x => x.TotalAmount" Title="Total (₹)" Format="N2" />
+        <TemplateColumn Title="Actions" Sortable="false">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit"   Size="Size.Small" OnClick="() => OpenEdit(context.Item)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Print"  Size="Size.Small" Color="Color.Primary"
+                               OnClick="() => NavigateToPrint(context.Item.Id)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteItem(context.Item)" />
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+</MudDataGrid>
+</div>
+
+<MudDialog @bind-Visible="_dialogOpen" Options="_dialogOptions">
+    <TitleContent>@(_editing?.Id == 0 ? "Add" : "Edit") Challan</TitleContent>
+    <DialogContent>
+        @if (_editing != null)
+        {
+            <MudGrid Spacing="2">
+                @* Row 1 — Challan No, BSR, Date, Section *@
+                <MudItem xs="3"><MudTextField @bind-Value="_editing.ChallanNo" Label="Challan No*" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="3"><MudTextField @bind-Value="_editing.BsrCode"   Label="BSR Code*"   Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="3"><DateField Value="_challanDate" ValueChanged="d => _challanDate = d" Label="Date*" Variant="Variant.Outlined" Margin="Margin.Dense" Class="date-field" /></MudItem>
+                <MudItem xs="3">
+                    <MudSelect @bind-Value="_editing.Section" Label="Section" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var s in AppConstants.KnownSections)
+                        { <MudSelectItem Value="@s">@s</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+
+                @* Row 2 — Minor Head Code *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Minor Head Code (OLTAS)</MudText>
+                    <MudRadioGroup @bind-Value="_editing.MinorHeadCode">
+                        <MudRadio Value="@("200")" Color="Color.Primary">200 — TDS Payable by Taxpayer (regular payment)</MudRadio>
+                        <MudRadio Value="@("400")" Color="Color.Warning">400 — TDS on Regular Assessment (AO demand)</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+
+                @* Row 3 — Amounts *@
+                <MudItem xs="2"><MudNumericField @bind-Value="_editing.TdsAmount" Label="TDS (₹)"         Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" HideSpinButtons="true" Class="amount-field" /></MudItem>
+                <MudItem xs="2"><MudNumericField @bind-Value="_editing.Surcharge" Label="Surcharge"       Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" HideSpinButtons="true" Class="amount-field" /></MudItem>
+                <MudItem xs="2"><MudNumericField @bind-Value="_editing.Cess"      Label="Cess"            Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" HideSpinButtons="true" Class="amount-field" /></MudItem>
+                <MudItem xs="2"><MudNumericField @bind-Value="_editing.Interest"  Label="Interest"        Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" HideSpinButtons="true" Class="amount-field" /></MudItem>
+                <MudItem xs="2"><MudNumericField @bind-Value="_editing.LateFee"   Label="Late Fee"        Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" HideSpinButtons="true" Class="amount-field" /></MudItem>
+                <MudItem xs="2"><MudNumericField @bind-Value="_editing.Amount"    Label="Other Charges"   Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" HideSpinButtons="true" Class="amount-field" /></MudItem>
+
+                @* Row 3 — Quarter, Bank *@
+                <MudItem xs="2">
+                    <MudSelect Value="_editing.Quarter" Label="Quarter" Variant="Variant.Outlined" Margin="Margin.Dense" ShrinkLabel="true"
+                               ValueChanged="@((string q) => OnQuarterChanged(q))">
+                        @foreach (var q in AppConstants.QuarterCodes)
+                        { <MudSelectItem Value="@q">@q</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="10"><MudTextField @bind-Value="_editing.BankName" Label="Bank" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+
+                @* Row 4 — Remarks *@
+                <MudItem xs="12"><MudTextField @bind-Value="_editing.Remarks" Label="Remarks" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            </MudGrid>
+
+            @* ── Link TDS Entries ── *@
+            @if (!string.IsNullOrEmpty(_editing.Quarter))
+            {
+                <MudDivider Class="my-3" />
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <span style="font-weight:600;font-size:14px;color:#1565C0">Link TDS Entries — @_editing.Quarter</span>
+                    <span style="font-size:11px;color:#888">✓ = linked &nbsp;·&nbsp; uncheck to unlink &nbsp;·&nbsp; Save to apply</span>
+                </div>
+
+                @if (_linkableEntries.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">No TDS entries found for @_editing.Quarter.</MudAlert>
+                }
+                else
+                {
+                    @* ── Balance Bar ── *@
+                    <div style="display:flex;align-items:center;gap:16px;background:#f8fafc;border:1px solid #e3e8f0;border-radius:8px;padding:10px 16px;margin-bottom:10px;font-size:13px">
+                        <div style="flex:1">
+                            <div style="font-size:10px;color:#888;margin-bottom:2px">Challan Amount</div>
+                            <div style="font-weight:700;color:#1565C0;font-size:15px">₹@ChallanAmt.ToString("N2")</div>
+                        </div>
+                        <div style="flex:1">
+                            <div style="font-size:10px;color:#888;margin-bottom:2px">Selected TDS</div>
+                            <div style="font-weight:700;color:#2e7d32;font-size:15px">₹@SelectedTds.ToString("N2")</div>
+                        </div>
+                        <div style="flex:1">
+                            <div style="font-size:10px;color:#888;margin-bottom:2px">Difference</div>
+                            <div style="font-weight:700;font-size:15px;color:@(IsBalanced ? "#2e7d32" : "#e53935")">
+                                @(IsBalanced ? "✅ Balanced" : $"₹{Math.Abs(ChallanAmt - SelectedTds):N2} {(ChallanAmt > SelectedTds ? "under" : "over")}")
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.AutoFixHigh"
+                                       OnClick="AutoMatch"
+                                       Style="font-size:11px;font-weight:700;letter-spacing:.4px;white-space:nowrap">
+                                Auto-Match
+                            </MudButton>
+                            @if (!string.IsNullOrEmpty(_autoMatchMsg))
+                            {
+                                <div style="font-size:10px;color:@(_autoMatchOk?"#2e7d32":"#e65100");font-weight:600;text-align:right">
+                                    @_autoMatchMsg
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Entries Table ── *@
+                    <div style="max-height:220px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px">
+                        <table style="width:100%;border-collapse:collapse;font-size:12px">
+                            <thead>
+                                <tr style="background:#1565C0;color:#fff;position:sticky;top:0">
+                                    <th style="padding:6px 10px;width:36px">
+                                        <MudCheckBox T="bool" Value="@(_selectedEntryIds.Count == _linkableEntries.Count)"
+                                                     ValueChanged="ToggleAll" Color="Color.Default" Size="Size.Small" />
+                                    </th>
+                                    <th style="padding:6px 10px;text-align:left">Entry No</th>
+                                    <th style="padding:6px 10px;text-align:left">Date</th>
+                                    <th style="padding:6px 10px;text-align:left">Deductee</th>
+                                    <th style="padding:6px 10px;text-align:left">Section</th>
+                                    <th style="padding:6px 10px;text-align:right">Total TDS (₹)</th>
+                                    <th style="padding:6px 10px;text-align:center">Linked</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in _linkableEntries)
+                                {
+                                    var isChecked = _selectedEntryIds.Contains(e.Id);
+                                    var isAutoMatched = _autoMatchedIds.Contains(e.Id);
+                                    <tr style="border-bottom:1px solid #f0f0f0;
+                                               background:@(isChecked ? (isAutoMatched ? "#e8f5e9" : "#e3f2fd") : "white")">
+                                        <td style="padding:5px 10px">
+                                            <MudCheckBox T="bool" Value="isChecked" Size="Size.Small"
+                                                         ValueChanged="@((bool v) => ToggleEntry(e.Id, v))" />
+                                        </td>
+                                        <td style="padding:5px 10px;font-family:monospace">
+                                            @e.EntryNo
+                                            @if (isAutoMatched)
+                                            {
+                                                <span style="font-size:9px;background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:1px 4px;margin-left:4px;font-weight:700">AUTO</span>
+                                            }
+                                        </td>
+                                        <td style="padding:5px 10px">@e.EntryDate.ToString("dd-MMM-yyyy")</td>
+                                        <td style="padding:5px 10px">@e.DeducteeName</td>
+                                        <td style="padding:5px 10px">@e.Section</td>
+                                        <td style="padding:5px 10px;text-align:right;font-weight:600">@e.TotalTds.ToString("N2")</td>
+                                        <td style="padding:5px 10px;text-align:center">
+                                            @if (isChecked)
+                                            {
+                                                <span style="color:#2e7d32;font-size:16px">✓</span>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#bbb;font-size:14px">—</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        }
+        @if (!string.IsNullOrEmpty(_saveError))
+        { <MudAlert Severity="Severity.Error" Class="mt-2">@_saveError</MudAlert> }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _dialogOpen = false">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Challan> _items = new();
+    private string _search = "";
+    private Func<Challan, bool> _filter => c =>
+        string.IsNullOrEmpty(_search) ||
+        c.ChallanNo.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        c.BsrCode.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        c.BankName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        c.Section.Contains(_search, StringComparison.OrdinalIgnoreCase);
+    private bool _dialogOpen;
+    private Challan? _editing;
+    private DateTime? _challanDate;
+    private string _saveError = "";
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    // Entry linking
+    private List<TdsEntry> _linkableEntries = new();
+    private HashSet<int> _selectedEntryIds = new();
+    private HashSet<int> _previouslyLinkedIds = new();
+    private HashSet<int> _autoMatchedIds = new();
+    private string _autoMatchMsg = "";
+    private bool _autoMatchOk = false;
+
+    private double SelectedTds => _linkableEntries.Where(e => _selectedEntryIds.Contains(e.Id)).Sum(e => e.TotalTds);
+    private double ChallanAmt  => _editing == null ? 0 : _editing.TdsAmount + _editing.Surcharge + _editing.Cess + _editing.Interest + _editing.LateFee;
+    private bool   IsBalanced  => Math.Abs(ChallanAmt - SelectedTds) < 1;
+
+    protected override void OnInitialized() { AppState.OnChange += Reload; Load(); }
+
+    void Load() => _items = Svc.GetAll(AppState.CurrentDeductorId > 0 ? AppState.CurrentDeductorId : null, AppState.CurrentFY);
+
+    void Reload() { Load(); StateHasChanged(); }
+
+    void OpenAdd()
+    {
+        var deductor = AppState.CurrentDeductorId > 0 ? DeductorSvc.GetById(AppState.CurrentDeductorId) : null;
+        _editing = new Challan
+        {
+            DeductorId    = AppState.CurrentDeductorId,
+            ChallanDate   = DateTime.Today,
+            FinancialYear = AppState.CurrentFY,
+            BsrCode       = deductor?.DefaultBsrCode  ?? "",
+            BankName      = deductor?.DefaultBankName ?? "",
+        };
+        _challanDate = DateTime.Today; _saveError = "";
+        _linkableEntries = new(); _selectedEntryIds = new(); _previouslyLinkedIds = new();
+        _dialogOpen = true;
+    }
+
+    void OpenEdit(Challan c)
+    {
+        _editing = new Challan
+        {
+            Id = c.Id, ChallanNo = c.ChallanNo, BsrCode = c.BsrCode, ChallanDate = c.ChallanDate,
+            DeductorId = c.DeductorId, Section = c.Section, TdsAmount = c.TdsAmount,
+            Surcharge = c.Surcharge, Cess = c.Cess, Interest = c.Interest, LateFee = c.LateFee,
+            Amount = c.Amount, Quarter = c.Quarter, BankName = c.BankName, AckNo = c.AckNo,
+            FinancialYear = c.FinancialYear, Status = c.Status, Remarks = c.Remarks,
+            MinorHeadCode = c.MinorHeadCode
+        };
+        _challanDate = c.ChallanDate; _saveError = "";
+        LoadLinkableEntries(c.Quarter, c.ChallanNo);
+        _dialogOpen = true;
+    }
+
+    void LoadLinkableEntries(string quarter, string existingChallanNo = "")
+    {
+        if (string.IsNullOrEmpty(quarter)) { _linkableEntries = new(); return; }
+        _linkableEntries = EntrySvc.GetAll(AppState.CurrentDeductorId, AppState.CurrentFY)
+            .Where(e => e.Quarter == quarter &&
+                        (string.IsNullOrEmpty(e.ChallanNo) || e.ChallanNo == existingChallanNo))
+            .OrderBy(e => e.EntryNo)
+            .ToList();
+        _previouslyLinkedIds = _linkableEntries.Where(e => e.ChallanNo == existingChallanNo && !string.IsNullOrEmpty(existingChallanNo))
+                                               .Select(e => e.Id).ToHashSet();
+        _selectedEntryIds = new HashSet<int>(_previouslyLinkedIds);
+        _autoMatchedIds = new();
+        _autoMatchMsg = "";
+    }
+
+    void AutoMatch()
+    {
+        if (_editing == null || ChallanAmt <= 0) return;
+
+        double target = ChallanAmt;
+        const double tolerance = 1.0;
+
+        // Strategy 1: exact single entry match
+        var exact = _linkableEntries.FirstOrDefault(e => Math.Abs(e.TotalTds - target) < tolerance);
+        if (exact != null)
+        {
+            _selectedEntryIds = new HashSet<int> { exact.Id };
+            _autoMatchedIds   = new HashSet<int> { exact.Id };
+            _autoMatchMsg = $"✔ Exact match — 1 entry";
+            _autoMatchOk  = true;
+            return;
+        }
+
+        // Strategy 2: greedy accumulation (sorted by TotalTds desc for best fit)
+        var candidates = _linkableEntries.OrderByDescending(e => e.TotalTds).ToList();
+        var picked     = new HashSet<int>();
+        double running = 0;
+        foreach (var e in candidates)
+        {
+            if (running + e.TotalTds <= target + tolerance)
+            {
+                picked.Add(e.Id);
+                running += e.TotalTds;
+                if (Math.Abs(running - target) < tolerance) break;
+            }
+        }
+
+        if (picked.Count > 0 && Math.Abs(running - target) < tolerance)
+        {
+            _selectedEntryIds = picked;
+            _autoMatchedIds   = new HashSet<int>(picked);
+            _autoMatchMsg = $"✔ Matched {picked.Count} entries — ₹{running:N2}";
+            _autoMatchOk  = true;
+        }
+        else if (picked.Count > 0)
+        {
+            // Best-effort partial match
+            _selectedEntryIds = picked;
+            _autoMatchedIds   = new HashSet<int>(picked);
+            _autoMatchMsg = $"⚠ Best fit: {picked.Count} entries (₹{running:N2}) — review difference";
+            _autoMatchOk  = false;
+        }
+        else
+        {
+            _autoMatchMsg = "No matching combination found";
+            _autoMatchOk  = false;
+        }
+    }
+
+    void OnQuarterChanged(string q)
+    {
+        if (_editing == null) return;
+        _editing.Quarter = q;
+        LoadLinkableEntries(q, _editing.ChallanNo);
+    }
+
+    void ToggleEntry(int id, bool value)
+    {
+        if (value) _selectedEntryIds.Add(id);
+        else _selectedEntryIds.Remove(id);
+    }
+
+    void ToggleAll(bool value)
+    {
+        if (value) _selectedEntryIds = _linkableEntries.Select(e => e.Id).ToHashSet();
+        else _selectedEntryIds.Clear();
+    }
+
+    void Save()
+    {
+        if (_editing == null) return;
+
+        // Validations
+        if (string.IsNullOrWhiteSpace(_editing.ChallanNo))
+            { _saveError = "Challan No is required."; return; }
+        var challanDigits = new string(_editing.ChallanNo.Where(char.IsDigit).ToArray());
+        if (challanDigits.Length != 5)
+            { _saveError = "Challan serial must be exactly 5 digits (e.g. 00001)."; return; }
+        if (string.IsNullOrWhiteSpace(_editing.BsrCode))
+            { _saveError = "BSR Code is required."; return; }
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_editing.BsrCode, @"^\d{7}$"))
+            { _saveError = "BSR Code must be exactly 7 digits (e.g. 0510308)."; return; }
+        if (!_challanDate.HasValue)
+            { _saveError = "Challan date is required."; return; }
+        if (_challanDate.Value.Date > DateTime.Today)
+            { _saveError = "Challan date cannot be a future date."; return; }
+
+        _editing.ChallanDate = _challanDate.Value;
+        // Auto-calculate total
+        _editing.TotalAmount = Math.Round(
+            _editing.TdsAmount + _editing.Surcharge + _editing.Cess +
+            _editing.Interest + _editing.LateFee + _editing.Amount, 2);
+
+        var (ok, msg) = Svc.Save(_editing);
+        if (!ok) { _saveError = msg; return; }
+
+        // Link/unlink entries
+        if (_selectedEntryIds.Any() || _previouslyLinkedIds.Any())
+        {
+            var toLink   = _selectedEntryIds.ToList();
+            var toUnlink = _previouslyLinkedIds.Except(_selectedEntryIds).ToList();
+            EntrySvc.LinkEntriesToChallan(_editing.ChallanNo, toLink, toUnlink);
+        }
+
+        _dialogOpen = false; Load();
+        Snackbar.Add($"Challan saved. {_selectedEntryIds.Count} entries linked.", Severity.Success);
+    }
+
+    async Task DeleteItem(Challan c)
+    {
+        var confirmed = await DialogSvc.ShowMessageBox(
+            "Delete Challan?",
+            $"Delete challan '{c.ChallanNo}' — ₹{c.TotalAmount:N0}?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true) return;
+        var (ok, msg) = Svc.Delete(c.Id);
+        if (ok) { Load(); AppState.NotifyStateChanged(); Snackbar.Add("Deleted.", Severity.Success); }
+        else Snackbar.Add(msg, Severity.Error);
+    }
+
+    void NavigateToPrint(int challanId)
+        => Nav.NavigateTo($"/challan/print?id={challanId}");
+
+    public void Dispose() => AppState.OnChange -= Reload;
+}

@@ -1,0 +1,210 @@
+@* Shown after login — user picks a deductor + FY, or adds a new one inline *@
+@inject AppStateService AppState
+@inject DeductorService DeductorSvc
+@inject ISnackbar Snackbar
+
+<MudDialog Style="min-width:480px">
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">
+                @(_addingNew ? "Add New Company" : "Select Company & Financial Year")
+            </MudText>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        @if (!_addingNew)
+        {
+            <!-- ── SELECT MODE ── -->
+            <MudText Color="Color.Secondary" Class="mb-4">
+                Welcome, <b>@AppState.CurrentUser</b>. Select the company and financial year to work with.
+            </MudText>
+
+            <MudSelect T="int" @bind-Value="_selectedDeductorId" Label="Company / Deductor*"
+                       Variant="Variant.Outlined" Class="mb-4" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var d in _deductors)
+                {
+                    <MudSelectItem Value="@d.Id">@d.CompanyName (@d.Tan)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="string" @bind-Value="_selectedFY" Label="Financial Year*"
+                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var fy in AppConstants.FinancialYears)
+                {
+                    <MudSelectItem Value="@fy">FY @fy</MudSelectItem>
+                }
+            </MudSelect>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3">@_error</MudAlert>
+            }
+
+            @if (_deductors.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3">
+                    No companies yet. Click <b>+ New Company</b> to add one.
+                </MudAlert>
+            }
+        }
+        else
+        {
+            <!-- ── ADD NEW MODE ── -->
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_new.CompanyName" Label="Company Name*" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTextField Value="@_new.Tan" Label="TAN*" Variant="Variant.Outlined"
+                                  Placeholder="ABCD12345E" MaxLength="10" Immediate="true" Class="tan-field"
+                                  Style="text-transform:uppercase;font-family:monospace;letter-spacing:1px"
+                                  ValueChanged="@((string v) => _new.Tan = v.ToUpper().Trim())" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTextField Value="@_new.Pan" Label="PAN*" Variant="Variant.Outlined"
+                                  Placeholder="ABCDE1234F" MaxLength="10" Immediate="true" Class="pan-field"
+                                  Style="text-transform:uppercase;font-family:monospace;letter-spacing:1px"
+                                  ValueChanged="@((string v) => _new.Pan = v.ToUpper().Trim())" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_new.Address" Label="Address" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTextField @bind-Value="_new.City" Label="City" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSelect @bind-Value="_new.State" Label="State" Variant="Variant.Outlined"
+                               AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var s in AppConstants.IndianStates)
+                        { <MudSelectItem Value="@s">@s</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTextField @bind-Value="_new.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTextField @bind-Value="_new.Phone" Label="Phone" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField Value="@_new.Email" Label="Email" Variant="Variant.Outlined"
+                                  InputType="InputType.Email" Style="text-transform:lowercase"
+                                  Immediate="true" ValueChanged="@((string v) => _new.Email = (v ?? "").Trim().ToLower())" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_saveError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_saveError</MudAlert>
+            }
+        }
+    </DialogContent>
+
+    <DialogActions>
+        @if (!_addingNew)
+        {
+            <MudButton OnClick="() => _addingNew = true"
+                       StartIcon="@Icons.Material.Filled.Add" Color="Color.Secondary">
+                New Company
+            </MudButton>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm"
+                       Disabled="_selectedDeductorId == 0 && _deductors.Count > 0">
+                Open
+            </MudButton>
+        }
+        else
+        {
+            <MudButton OnClick="CancelAdd">
+                ← Back
+            </MudButton>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveNew">
+                Save & Select
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    private List<Deductor> _deductors = new();
+    private int    _selectedDeductorId;
+    private string _selectedFY = "";
+    private string _error = "";
+
+    private bool     _addingNew;
+    private Deductor _new = new();
+    private string   _saveError = "";
+
+    protected override void OnInitialized()
+    {
+        _deductors  = DeductorSvc.GetAll();
+        _selectedFY = AppState.CurrentFY;
+
+        // Restore last-used deductor and FY from DB settings
+        var lastDeductorId = TDSPro.DAL.Database.GetSetting("LAST_DEDUCTOR_ID", "0");
+        var lastFY         = TDSPro.DAL.Database.GetSetting("LAST_FY", "");
+
+        if (!string.IsNullOrEmpty(lastFY) && TDSPro.Common.AppConstants.FinancialYears.Contains(lastFY))
+            _selectedFY = lastFY;
+
+        if (int.TryParse(lastDeductorId, out int lastId) && lastId > 0
+            && _deductors.Any(d => d.Id == lastId))
+            _selectedDeductorId = lastId;
+        else if (_deductors.Count == 1)
+            _selectedDeductorId = _deductors[0].Id;
+
+#if DEBUG
+        var dev = _deductors.FirstOrDefault(x =>
+            x.CompanyName.Contains("Icons", StringComparison.OrdinalIgnoreCase));
+        if (dev != null) _selectedDeductorId = dev.Id;
+        _selectedFY = "2026-27";
+#endif
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+#if DEBUG
+        if (firstRender) Confirm();
+#endif
+    }
+
+    void Confirm()
+    {
+        if (_selectedDeductorId == 0 && _deductors.Count > 0)
+            { _error = "Please select a company."; return; }
+        if (string.IsNullOrEmpty(_selectedFY))
+            { _error = "Please select a financial year."; return; }
+
+        if (_selectedDeductorId > 0)
+        {
+            var d = _deductors.First(x => x.Id == _selectedDeductorId);
+            AppState.SetDeductor(d.Id, d.CompanyName, d.Tan);
+            TDSPro.DAL.Database.SetSetting("LAST_DEDUCTOR_ID", _selectedDeductorId.ToString());
+        }
+        AppState.SetFY(_selectedFY);
+        TDSPro.DAL.Database.SetSetting("LAST_FY", _selectedFY);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    void CancelAdd() { _addingNew = false; _saveError = ""; }
+
+    void SaveNew()
+    {
+        _saveError = "";
+        var (ok, msg) = DeductorSvc.Save(_new);
+        if (!ok) { _saveError = msg; return; }
+
+        // Reload list and auto-select the new entry
+        _deductors = DeductorSvc.GetAll();
+        var saved = _deductors.FirstOrDefault(x => x.Tan == _new.Tan);
+        if (saved != null) _selectedDeductorId = saved.Id;
+
+        _addingNew = false;
+        _new = new Deductor();
+        Snackbar.Add("Company added successfully.", Severity.Success);
+    }
+}

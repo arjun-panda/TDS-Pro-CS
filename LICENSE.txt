@@ -1,0 +1,30 @@
+TDS Pro Software License Agreement
+====================================
+
+Copyright (c) 2026 TDS Pro Software. All rights reserved.
+
+This software is proprietary and confidential.
+
+GRANT OF LICENSE
+You are granted a non-exclusive, non-transferable license to use this
+software on the number of computers permitted by your license tier:
+
+  Trial    : 1 computer, 30 days
+  Basic    : 1 computer, 1 year
+  Pro      : Up to 5 computers, 1 year
+  Ultimate : Unlimited computers, lifetime
+
+RESTRICTIONS
+You may not:
+  - Copy, redistribute, or resell this software
+  - Reverse engineer, decompile, or disassemble the software
+  - Remove or alter any proprietary notices or labels
+  - Use the software beyond the licensed scope
+
+DISCLAIMER
+This software is provided "as is" without warranty of any kind.
+TDS Pro Software shall not be liable for any direct, indirect,
+incidental, or consequential damages arising from its use.
+
+For licensing: license@tdspro.in
+For support  : support@tdspro.in
