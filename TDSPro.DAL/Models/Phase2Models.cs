@@ -73,6 +73,7 @@ namespace TDSPro.DAL.Models
         public string ResponsiblePan { get; set; } = "";
         public string ResponsibleName{ get; set; } = "";
         public string Designation    { get; set; } = "";
+        public string Gstin          { get; set; } = "";       // GST Identification Number (15 chars)
         // Correction return fields
         public bool   IsCorrection   { get; set; } = false;   // true = correction, false = original
         public string PreviousPrn    { get; set; } = "";      // Provisional Receipt Number from original filing
@@ -156,8 +157,10 @@ namespace TDSPro.DAL.Models
         public double TotalTdsDeducted  => Deductees.Sum(d => d.TdsDeducted);
         public double TotalAmountPaid   => Deductees.Sum(d => d.AmountPaid);
         public double TotalGrossSalary  => SalaryDetails.Any()
-            ? SalaryDetails.Sum(s => s.GrossTotalIncome > 0 ? s.GrossTotalIncome
-                : Math.Max(0, s.Salary17_1 + s.Perquisites17_2 + s.ProfitSalary17_3 - s.ExemptU10))
+            ? SalaryDetails.Sum(s => {
+                double total = s.Salary17_1 + s.Perquisites17_2 + s.ProfitSalary17_3;
+                return s.GrossTotalIncome > 0 ? s.GrossTotalIncome : Math.Max(0, total - s.ExemptU10);
+            })
             : TotalAmountPaid;
         public int    TotalDeductees    => Deductees.Count;
     }

@@ -116,7 +116,7 @@ namespace TDSPro.DAL
                 "",                                             //  6: Transaction Type (empty=Regular)
                 "",                                             //  7: Batch Updation Indicator (empty=Regular)
                 "",                                             //  8: Original PRN (empty=Regular)
-                "",                                             //  9: Previous PRN (empty=Regular)
+                h.PreviousPrn?.Trim() ?? "",                    //  9: Previous PRN (15-digit token from last quarter)
                 prn,                                            // 10: Current PRN / Token (empty=Regular)
                 "",                                             // 11: PRN Date
                 "",                                             // 12: Last TAN (empty=Regular)
@@ -163,7 +163,7 @@ namespace TDSPro.DAL
                     ? data.TotalGrossSalary.ToString("F2")      // 50: Batch Total Gross Income for SD (24Q Q4)
                     : "",                                       // 50
                 "N",                                            // 51: AO Approval (must be "N" for Regular)
-                "N",                                            // 52: Has regular statement filed earlier ("N"=first filing, "Y"=subsequent)
+                !string.IsNullOrEmpty(h.PreviousPrn) ? "Y" : "N", // 52: Has regular statement filed earlier
                 "",                                             // 53: Last Deductor Type (empty for Regular)
                 // 54: State Name — mandatory for S/E/H/N; must be empty for K/M/P/J/B/Q/F/T
                 (new[]{"S","E","H","N"}.Contains(DeductorCategory(h.DeductorType)) ? stateCode : ""),
@@ -181,7 +181,7 @@ namespace TDSPro.DAL
                 "",                                             // 66
                 "",                                             // 67
                 "",                                             // 68
-                "",                                             // 69
+                h.Gstin.Trim().ToUpper(),                       // 69: GSTIN (optional)
                 nsdlForm == "24Q" && h.Quarter == "Q4" ? "0" : "", // 70: Count 194P Records (0 for no 194P employees)
                 nsdlForm == "24Q" && h.Quarter == "Q4" ? "0.00" : "" // 71: Batch Total 194P Gross Income
             ));
@@ -330,6 +330,8 @@ namespace TDSPro.DAL
                           ?? data.Challans.FirstOrDefault();
                     string sdChallanSlNo = ch?.SlNo.ToString() ?? "1";
                     lines.Add(BuildSD(sd, sdSeq, L(), sdChallanSlNo));
+                    if (sd.StandardDeduction > 0)
+                        lines.Add(BuildS16(sd, sdSeq, L(), sdChallanSlNo));
                     sdSeq++;
                 }
             }
@@ -437,114 +439,96 @@ namespace TDSPro.DAL
         }
 
         // ── SD — Salary Detail record (Annexure II, 24Q Q4 only) ────────────────
-        // 88 fields (87 ^ separators). Layout reverse-engineered from NSDL RPU output.
-        // idx 0=lineNo  1=SD  2=challanSlNo  3=empSlNo  4=empCategory  5=panRef
-        // idx 6=PAN  7=blank  8=name  9=gender  10=fromDate  11=toDate
-        // idx 12=salary17_1  13=perquisites  14=countU10  15=exemptU10  16=balance
-        // idx 17=ent16ii  18=netSalAfter16  19=blank  20=countS16(int)  21=0.00
-        // idx 22=GTI  23=tax  24=surcharge  25=cess  26=0.00  27=totalTaxLiab
-        // idx 28=chap6ATotal  29=shortfall  30=0.00  31=blank  32=blank
-        // idx 33=grossSalary  34=prevEmpSal  35=chap6ATotal2  36=taxableInc
-        // idx 37=regime  38=N  39=chap6ACount(int)  40-47=blank(8)
-        // idx 48=N  49=0(int)  50-57=blank(8)  58=N  59-65=blank(7)
-        // idx 66=totalSal  67=prevEmpSal  68=0.00  69=blank
-        // idx 70=TDScurEmp  71=TDSprevEmp  72=TDSOther  73=blank
-        // idx 74=0.00  75=0.00  76=0.00  77=TDSTotal  78=regime  79=0.00  80=0.00
-        // idx 81-87=blank(7)
+        // 88 fields. Layout confirmed from reference NSDL RPU output (4I03886B.txt).
         private static string BuildSD(ReturnSalaryDetail sd, int seq, string lineNo, string challanSlNo)
         {
             string F(double v) => v.ToString("F2");
             double totalSal = sd.Salary17_1 + sd.Perquisites17_2 + sd.ProfitSalary17_3;
             double balanceAfter10 = Math.Max(0, totalSal - sd.ExemptU10);
             double stdDed = sd.StandardDeduction > 0 ? sd.StandardDeduction : 0;
-            // Field 18 = balance after u/s 10 and u/s 16(ii) — standard deduction u/s 16(ia) reduces this
-            double balanceAfterS16ia = Math.Max(0, balanceAfter10 - stdDed);
-            // GTI = salary - exemptU10 - stdDed - Chapter6A (or use explicit field if provided)
-            double gti = sd.GrossTotalIncome > 0 ? sd.GrossTotalIncome : balanceAfterS16ia;
-            double taxableIncome = sd.TaxableIncome > 0 ? sd.TaxableIncome : Math.Max(0, gti - sd.Chapter6ATotal);
+            // GTI = balanceAfter10 + entertainment (stdDed u/s 16(ia) is in S16 record, NOT subtracted from GTI)
+            double gti = sd.GrossTotalIncome > 0 ? sd.GrossTotalIncome : balanceAfter10;
             double tax = sd.TaxPayable > 0 ? sd.TaxPayable : 0;
-            double totalTaxLiab = tax + sd.Surcharge + sd.Cess;
-            double netTaxAfterRebate = Math.Max(0, totalTaxLiab - sd.Rebate87A);
-            double netTaxPayable = Math.Max(0, netTaxAfterRebate - sd.Relief89);
-            double shortfall = netTaxPayable - sd.Chapter6ATotal - sd.TdsDeducted - sd.PrevEmpTds;
+            // field28 = tax liability - TDS deducted; T-FV-4202: field28 = field24+25+26-27-field78(TDS)
+            double taxLiability = tax + sd.Surcharge + sd.Cess - sd.Rebate87A;
+            double field28 = taxLiability - sd.TdsDeducted - sd.PrevEmpTds;
+            double shortfall = field28 - sd.Chapter6ATotal;
 
             return PipeL(lineNo, "SD",
-                challanSlNo,                                //  2: Challan Sl No
-                seq.ToString(),                             //  3: Employee Sl No
-                sd.EmployeeCategory,                        //  4: Employee Category (W/S/G/O)
-                "",                                         //  5: PAN Ref (blank when PAN present)
-                sd.Pan.Trim().ToUpper(),                    //  6: PAN
-                "",                                         //  7: blank
-                Safe(sd.Name, 75),                          //  8: Name
-                sd.Gender,                                  //  9: Gender (M/F/T)
-                sd.EmploymentFrom.ToString("ddMMyyyy"),     // 10: Period From
-                sd.EmploymentTo.ToString("ddMMyyyy"),       // 11: Period To
-                F(sd.Salary17_1),                           // 12: Salary u/s 17(1)
-                sd.Perquisites17_2 == 0 ? "" : F(sd.Perquisites17_2), // 13: Perquisites (blank if zero)
-                sd.ExemptU10Count.ToString(),               // 14: Count of u/s 10 allowances (int)
-                F(sd.ExemptU10),                            // 15: Total exempt u/s 10
-                F(balanceAfter10),                          // 16: Balance (12+13-15)
-                "0.00",                                     // 17: Entertainment allowance u/s 16(ii) (Govt only)
-                F(balanceAfterS16ia),                       // 18: Balance after 16(ia) std deduction
-                "",                                         // 19: blank
-                "0",                                        // 20: Chapter VI-A count (int) — "0" avoids T-FV-4029
-                "0.00",                                     // 21: 0.00
-                F(gti),                                     // 22: Gross Total Income (= idx18 when no other income)
-                F(tax),                                     // 23: Tax on total income
-                F(sd.Surcharge),                            // 24: Surcharge
-                F(sd.Cess),                                 // 25: Health & Education Cess
-                "0.00",                                     // 26: 0.00
-                F(netTaxAfterRebate),                       // 27: Net tax after rebate u/s 87A
-                F(sd.Chapter6ATotal),                       // 28: Total Chapter VI-A deductions
-                F(shortfall),                               // 29: Shortfall(+)/Excess(-) = idx27-idx28-TDS
-                "0.00",                                     // 30: 0.00
-                "",                                         // 31: blank
+                challanSlNo,                                //  3: Challan Sl No
+                seq.ToString(),                             //  4: Employee Sl No
+                sd.EmployeeCategory,                        //  5: Employee Category (A/W/S/G/O)
+                "",                                         //  6: PAN Ref (blank when PAN present)
+                sd.Pan.Trim().ToUpper(),                    //  7: PAN
+                "",                                         //  8: blank
+                Safe(sd.Name, 75),                          //  9: Name
+                sd.Gender,                                  // 10: Gender (M/F/T/G/S)
+                sd.EmploymentFrom.ToString("ddMMyyyy"),     // 11: Period From
+                sd.EmploymentTo.ToString("ddMMyyyy"),       // 12: Period To
+                F(sd.Salary17_1),                           // 13: Salary u/s 17(1)
+                sd.Perquisites17_2 == 0 ? "" : F(sd.Perquisites17_2), // 14: Perquisites (blank if zero)
+                sd.ExemptU10Count.ToString(),               // 15: Count of u/s 10 allowances
+                F(sd.ExemptU10),                            // 16: Total exempt u/s 10
+                F(balanceAfter10),                          // 17: Balance after u/s 10 (13+14-16)
+                "0.00",                                     // 18: Entertainment allowance u/s 16(ii) (Govt only)
+                F(gti),                                     // 19: GTI (= field17 + field18; stdDed is in S16, not here)
+                "",                                         // 20: blank
+                "0",                                        // 21: Chapter VI-A count (int)
+                "0.00",                                     // 22: Chapter VI-A total
+                F(gti),                                     // 23: Gross Total Income
+                F(tax),                                     // 24: Income Tax on total income
+                F(sd.Surcharge),                            // 25: Surcharge
+                F(sd.Cess),                                 // 26: Health & Education Cess
+                F(sd.Rebate87A),                            // 27: Rebate u/s 87A
+                F(field28),                                 // 28: Net tax after TDS (24+25+26-27-field78)
+                F(sd.Chapter6ATotal),                       // 29: Chapter VI-A deductions
+                F(shortfall),                               // 30: Shortfall(+)/Excess(-)
+                "0.00",                                     // 31: 0.00
                 "",                                         // 32: blank
-                F(totalSal),                                // 33: Gross Salary (total from 17(1)+(2)+(3))
-                F(sd.PrevEmpSalary),                        // 34: Previous employer salary
-                F(sd.Chapter6ATotal),                       // 35: Chapter VI-A total (repeat)
-                "0.00",                                     // 36: 0.00 (always 0 in reference)
-                sd.TaxRegime,                               // 37: Tax Regime (N/O)
-                "N",                                        // 38: N
-                sd.Chapter6ACount.ToString(),               // 39: Count of Chapter VI-A sub-records (int)
-                "", "", "", "", "", "", "", "",             // 40-47: blank (8)
-                "N",                                        // 48: N
-                "0",                                        // 49: 0 (int)
-                "", "", "", "", "", "", "", "",             // 50-57: blank (8)
-                "N",                                        // 58: N
-                "", "", "", "", "", "", "",                 // 59-65: blank (7)
-                F(totalSal),                                // 66: Total salary (repeat)
-                F(sd.PrevEmpSalary),                        // 67: Previous employer salary (repeat)
-                "0.00",                                     // 68: 0.00
-                "",                                         // 69: blank
-                F(sd.TdsDeducted),                          // 70: TDS by current employer
-                F(sd.PrevEmpTds),                           // 71: TDS by previous employer
-                "0.00",                                     // 72: TDS other
-                "",                                         // 73: blank
-                "0.00",                                     // 74: 0.00
+                "",                                         // 33: blank
+                F(totalSal),                                // 34: Gross Salary
+                F(sd.PrevEmpSalary),                        // 35: Previous employer salary
+                F(sd.Chapter6ATotal),                       // 36: Chapter VI-A total (repeat)
+                "0.00",                                     // 37: 0.00
+                sd.TaxRegime,                               // 38: Tax Regime (N/O)
+                "N",                                        // 39: N
+                sd.Chapter6ACount.ToString(),               // 40: Count of Chapter VI-A sub-records
+                "", "", "", "", "", "", "", "",             // 41-48: blank (8)
+                "N",                                        // 49: N
+                "0",                                        // 50: 0 (int)
+                "", "", "", "", "", "", "", "",             // 51-58: blank (8)
+                "N",                                        // 59: N
+                "", "", "", "", "", "", "",                 // 60-66: blank (7)
+                F(totalSal),                                // 67: Total salary
+                F(sd.PrevEmpSalary),                        // 68: Previous employer salary (repeat)
+                "0.00",                                     // 69: 0.00
+                "",                                         // 70: blank
+                "0.00",                                     // 71: TDS cur emp (per-challan; 0 for annual SD)
+                "0.00",                                     // 72: TDS previous employer
+                "0.00",                                     // 73: TDS other
+                "",                                         // 74: blank
                 "0.00",                                     // 75: 0.00
                 "0.00",                                     // 76: 0.00
-                F(sd.TdsDeducted + sd.PrevEmpTds),          // 77: Total TDS
-                sd.TaxRegime,                               // 78: Tax Regime (repeat)
-                "0.00",                                     // 79: 0.00
+                "0.00",                                     // 77: 0.00
+                F(sd.TdsDeducted + sd.PrevEmpTds),          // 78: Total TDS (annual, used in T-FV-4202)
+                sd.TaxRegime,                               // 79: Tax Regime (repeat)
                 "0.00",                                     // 80: 0.00
+                "0.00",                                     // 81: 0.00
                 "", "", "", "", "", ""                      // 82-87: blank (6)
             );
         }
 
-        // S16 sub-record (Section 16 deduction detail) — mandatory after each SD in 24Q Q4
-        // Fields: lineNo ^ S16 ^ challanSlNo ^ empSlNo ^ sectionCode ^ grossAmt ^ qualifyingAmt ^ deductibleAmt ^
+        // S16 sub-record — one per employee after SD. Reference: lineNo^S16^challanSlNo^empSlNo^1^16(ia)^amount^
         private static string BuildS16(ReturnSalaryDetail sd, int seq, string lineNo, string challanSlNo)
         {
             string F(double v) => v.ToString("F2");
-            double stdDed = sd.StandardDeduction > 0 ? sd.StandardDeduction : 0;
+            double stdDed = sd.StandardDeduction > 0 ? sd.StandardDeduction : 75000;
             return PipeL(lineNo, "S16",
                 challanSlNo,            // 3: Challan Sl No
                 seq.ToString(),         // 4: Employee Sl No
-                "16(ia)",               // 5: Section code (standard deduction)
-                F(stdDed),              // 6: Gross deduction amount
-                F(stdDed),              // 7: Qualifying amount
-                F(stdDed)               // 8: Deductible amount
+                "1",                    // 5: S16 sequential number within employee
+                "16(ia)",               // 6: Section code (standard deduction)
+                F(stdDed)               // 7: Deductible amount
             );
         }
 
