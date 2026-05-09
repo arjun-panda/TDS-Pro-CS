@@ -262,6 +262,9 @@ namespace TDSPro.DAL
             AddColumnIfMissing("deductors", "default_bank_name", "TEXT DEFAULT ''");
             AddColumnIfMissing("deductors", "cpc_password",      "TEXT DEFAULT ''");
             AddColumnIfMissing("deductors", "it_password",       "TEXT DEFAULT ''");
+            AddColumnIfMissing("deductors", "responsible_name",  "TEXT DEFAULT ''");
+            AddColumnIfMissing("deductors", "responsible_pan",   "TEXT DEFAULT ''");
+            AddColumnIfMissing("deductors", "designation",       "TEXT DEFAULT ''");
 
             // challans — columns added in various versions
             AddColumnIfMissing("challans", "financial_year", "TEXT DEFAULT '2025-26'");

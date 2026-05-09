@@ -16,6 +16,10 @@ namespace TDSPro.DAL.Models
         public string FinancialYear { get; set; } = "2024-25";
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+        // Responsible person for return filing
+        public string ResponsibleName { get; set; } = "";
+        public string ResponsiblePan  { get; set; } = "";
+        public string Designation     { get; set; } = "";
         // Bank defaults — auto-filled when adding challans
         public string DefaultBsrCode  { get; set; } = "";
         public string DefaultBankName { get; set; } = "";

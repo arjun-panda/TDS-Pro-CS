@@ -113,10 +113,21 @@
                                           Style="text-transform:lowercase"
                                           Immediate="true" ValueChanged="@((string v) => _editing.Email = (v ?? "").Trim().ToLower())" />
                         </MudItem>
+                        <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
                         <MudItem xs="12">
-                            <MudAlert Severity="Severity.Info" Dense="true">
-                                Contact person details appear on return filing forms (26Q/27Q) as the responsible person.
-                            </MudAlert>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Responsible Person (for return filing / Form 16)</MudText>
+                        </MudItem>
+                        <MudItem xs="5">
+                            <MudTextField @bind-Value="_editing.ResponsibleName" Label="Responsible Person" Variant="Variant.Outlined"
+                                          HelperText="As appearing on PAN card" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudTextField Value="@_editing.ResponsiblePan" Label="PAN of Responsible" Variant="Variant.Outlined"
+                                          style="text-transform:uppercase"
+                                          Immediate="true" ValueChanged="@((string v) => _editing.ResponsiblePan = (v ?? "").Trim().ToUpper())" />
+                        </MudItem>
+                        <MudItem xs="3">
+                            <MudTextField @bind-Value="_editing.Designation" Label="Designation" Variant="Variant.Outlined" />
                         </MudItem>
                         <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
                         <MudItem xs="12">
@@ -215,7 +226,8 @@
             ContactPerson = d.ContactPerson, Phone = d.Phone, Email = d.Email,
             FinancialYear = d.FinancialYear, IsActive = d.IsActive,
             CpcPassword = d.CpcPassword, ItPassword = d.ItPassword,
-            DefaultBsrCode = d.DefaultBsrCode, DefaultBankName = d.DefaultBankName
+            DefaultBsrCode = d.DefaultBsrCode, DefaultBankName = d.DefaultBankName,
+            ResponsibleName = d.ResponsibleName, ResponsiblePan = d.ResponsiblePan, Designation = d.Designation
         };
         _cpcPass = _itPass = _saveError = "";
         _dialogOpen = true;

@@ -40,8 +40,8 @@ namespace TDSPro.DAL.Repositories
                     cmd.CommandText = @"INSERT INTO deductors
                         (company_name,tan,pan,address,city,state,pincode,
                          contact_person,phone,email,financial_year,cpc_password,it_password,
-                         default_bsr_code,default_bank_name)
-                        VALUES(@cn,@t,@p,@ad,@ci,@st,@pi,@cp,@ph,@em,@fy,@cpwd,@ipwd,@bsr,@bank)";
+                         default_bsr_code,default_bank_name,responsible_name,responsible_pan,designation)
+                        VALUES(@cn,@t,@p,@ad,@ci,@st,@pi,@cp,@ph,@em,@fy,@cpwd,@ipwd,@bsr,@bank,@rn,@rp,@des)";
                 }
                 else
                 {
@@ -50,7 +50,8 @@ namespace TDSPro.DAL.Repositories
                         state=@st,pincode=@pi,contact_person=@cp,phone=@ph,
                         email=@em,financial_year=@fy,
                         cpc_password=@cpwd,it_password=@ipwd,
-                        default_bsr_code=@bsr,default_bank_name=@bank WHERE id=@id";
+                        default_bsr_code=@bsr,default_bank_name=@bank,
+                        responsible_name=@rn,responsible_pan=@rp,designation=@des WHERE id=@id";
                     cmd.Parameters.AddWithValue("@id", d.Id);
                 }
                 cmd.Parameters.AddWithValue("@cn", d.CompanyName);
@@ -68,6 +69,9 @@ namespace TDSPro.DAL.Repositories
                 cmd.Parameters.AddWithValue("@ipwd", string.IsNullOrEmpty(d.ItPassword)  ? "" : AesEncryption.Encrypt(d.ItPassword));
                 cmd.Parameters.AddWithValue("@bsr",  d.DefaultBsrCode);
                 cmd.Parameters.AddWithValue("@bank", d.DefaultBankName);
+                cmd.Parameters.AddWithValue("@rn",   d.ResponsibleName);
+                cmd.Parameters.AddWithValue("@rp",   d.ResponsiblePan.ToUpper());
+                cmd.Parameters.AddWithValue("@des",  d.Designation);
                 cmd.ExecuteNonQuery();
                 return (true, d.Id == 0 ? "Deductor saved." : "Deductor updated.");
             }
@@ -110,6 +114,9 @@ namespace TDSPro.DAL.Repositories
             ItPassword       = SafeDecrypt(r.IsDBNull(r.GetOrdinal("it_password"))  ? "" : r.GetString(r.GetOrdinal("it_password"))),
             DefaultBsrCode   = r.IsDBNull(r.GetOrdinal("default_bsr_code"))  ? "" : r.GetString(r.GetOrdinal("default_bsr_code")),
             DefaultBankName  = r.IsDBNull(r.GetOrdinal("default_bank_name")) ? "" : r.GetString(r.GetOrdinal("default_bank_name")),
+            ResponsibleName  = r.IsDBNull(r.GetOrdinal("responsible_name"))  ? "" : r.GetString(r.GetOrdinal("responsible_name")),
+            ResponsiblePan   = r.IsDBNull(r.GetOrdinal("responsible_pan"))   ? "" : r.GetString(r.GetOrdinal("responsible_pan")),
+            Designation      = r.IsDBNull(r.GetOrdinal("designation"))       ? "" : r.GetString(r.GetOrdinal("designation")),
         };
 
         private static string SafeDecrypt(string enc)

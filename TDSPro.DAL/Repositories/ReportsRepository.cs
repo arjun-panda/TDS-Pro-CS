@@ -207,9 +207,9 @@ namespace TDSPro.DAL.Repositories
                 Phone           = dr.Phone,
                 Email           = dr.Email,
                 FilingDate      = DateTime.Today,
-                ResponsiblePan  = dr.Pan,
-                ResponsibleName = dr.ContactPerson,
-                Designation     = "Director",
+                ResponsiblePan  = string.IsNullOrEmpty(dr.ResponsiblePan)  ? dr.Pan           : dr.ResponsiblePan,
+                ResponsibleName = string.IsNullOrEmpty(dr.ResponsibleName) ? dr.ContactPerson : dr.ResponsibleName,
+                Designation     = string.IsNullOrEmpty(dr.Designation)     ? "Director"       : dr.Designation,
             };
 
             // Challans for quarter
