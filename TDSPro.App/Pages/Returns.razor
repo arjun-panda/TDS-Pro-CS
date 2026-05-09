@@ -434,10 +434,11 @@
             var d = DeductorSvc.GetAll().FirstOrDefault(x => x.Id == AppState.CurrentDeductorId);
             if (d != null)
             {
-                _responsibleName = d.ContactPerson;
-                _responsiblePan  = d.Pan;
-                _nilName         = d.ContactPerson;
-                _nilPan          = d.Pan;
+                _responsibleName = string.IsNullOrEmpty(d.ResponsibleName) ? d.ContactPerson : d.ResponsibleName;
+                _responsiblePan  = string.IsNullOrEmpty(d.ResponsiblePan)  ? d.Pan           : d.ResponsiblePan;
+                _designation     = string.IsNullOrEmpty(d.Designation)     ? "Director"      : d.Designation;
+                _nilName         = _responsibleName;
+                _nilPan          = _responsiblePan;
             }
         }
         catch { }
